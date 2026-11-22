@@ -129,21 +129,7 @@ async function ensureFcc() {
 }
 
 async function listModels() {
-  const url = `http://${FCC_HOST}:${FCC_PORT}/v1/models?view=`;
-  const [messages, reasoning] = await Promise.all([
-    fetch(url + "messages").then(r => { if (!r.ok) throw Error("FCC " + r.status); return r.json(); }),
-    fetch(url + "responses").then(r => r.ok ? r.json() : null).catch(() => null),
-  ]);
-  const byRef = new Map((reasoning?.data || []).map(m => [m.provider_model_ref || m.id, m]));
-  const cliLevels = ["low","medium","high","xhigh","max"];
-  return messages.data.filter(m => !/embed|safety|guard|pii|calibration|topic-control|rerank/i.test(m.id)).map(m => {
-    const info = byRef.get(m.provider_model_ref || m.id);
-    const allowed = info?.reasoningEfforts || info?.reasoning_efforts;
-    const levels = m.supportsReasoning === false || m.supports_reasoning === false ? [] :
-      Array.isArray(allowed) ? cliLevels.filter(v => allowed.includes(v)) :
-      m.supportsReasoning === true || m.supports_reasoning === true ? cliLevels : [];
-    return {id:m.id, levels};
-  }).sort((a,b) => a.id.localeCompare(b.id));
+  return require("./fcc-catalog").listModels(`http://${FCC_HOST}:${FCC_PORT}`);
 }
 
 function fccEffortArgs(provider, args) {

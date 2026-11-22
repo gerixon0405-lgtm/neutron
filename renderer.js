@@ -719,7 +719,7 @@ addEventListener("mousedown", (e) => { if (popEl && !popEl.contains(e.target)) c
 function restartSession(c) { if (!live.has(c.id)) N.cc.stop(c.id); }
 
 $("#modelChip").onclick = async () => {
-  if (!models.length) { try { await refreshModels(); } catch { toast("Nem érem el az FCC modellistát.", true); } }
+  try { await refreshModels(); } catch { toast("Az FCC modellistája most nem frissíthető.", true); }
   const items = [{ header: true, label: "OpenAI Codex" }, { value: "codex|", label: "Codex · alapmodell" },
     ...codexModels.map(m => ({ value: "codex|" + m, label: m, group: "codex" })),
     { header: true, label: "Free Claude Code (ingyenes modellek)" },
@@ -793,10 +793,21 @@ function renderEffort() {
   label(); slider.oninput = label;
   slider.onchange = () => { chat[key] = levels[slider.value]; restartSession(chat); save(chat); };
 }
-async function refreshModels() {
+let catalogRequest, lastCatalog;
+function refreshModels() {
+  if (!catalogRequest) catalogRequest = loadModels().finally(() => { catalogRequest = null; });
+  return catalogRequest;
+}
+async function loadModels() {
   const catalog = await N.fcc.models();
+  $("#fccDot").className = "status-dot ok";
+  $("#fccText").textContent = `FCC · ${catalog.length} modell`;
+  const snapshot = JSON.stringify(catalog);
+  if (lastCatalog === snapshot) return;
+  lastCatalog = snapshot;
   models = catalog.map(m => m.id);
   fccLevels = Object.fromEntries(catalog.map(m => [m.id, m.levels]));
+  if (chat) renderEffort();
   if (characterDialog.open && profileProvider.value === "fcc") fillCharacterModels(profileModel.value);
   if ($("#voiceDialog").open && $("#assistantProvider").value === "fcc") fillVoiceModels($("#assistantModel").value);
 }
@@ -1185,6 +1196,9 @@ addEventListener("resize", movePill);
   }
   window.dispatchEvent(new Event("neutron-ready"));
   refreshAccounts();
+  const syncCatalog = () => { if (!document.hidden) refreshModels().catch(() => {}); };
+  window.addEventListener("focus", syncCatalog);
+  setInterval(syncCatalog, 30000);
   const ok = await N.fcc.ensure();
   $("#fccDot").className = "status-dot " + (ok ? "ok" : "bad");
   $("#fccText").textContent = ok ? "FCC kapcsolódva" : "FCC nem fut";

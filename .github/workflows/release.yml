@@ -45,6 +45,8 @@ jobs:
       - name: Test Linux app helpers
         if: runner.os == 'Linux'
         run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations
+      - name: Test FCC model catalog
+        run: node scripts/test-fcc-catalog.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata
