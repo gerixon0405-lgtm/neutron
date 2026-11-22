@@ -87,7 +87,7 @@ def processes():
         for proc in psutil.process_iter(["name"]):
             try:
                 if (proc.info["name"] or "").lower() in ("java.exe","javaw.exe"):
-                    found.setdefault(Path(proc.cwd()),[]).append(proc.pid)
+                    found.setdefault(Path(proc.cwd()).resolve(),[]).append(proc.pid)
             except (psutil.Error,OSError):
                 pass
         return found

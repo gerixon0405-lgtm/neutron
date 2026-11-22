@@ -15,7 +15,7 @@ class DesktopTests(unittest.TestCase):
     def setUp(self):
         temp = TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = Path(temp.name).resolve()
         self.p = self.root/"instances"/"test"
         self.g = self.p/"minecraft"
         (self.g/"mods").mkdir(parents=True)
