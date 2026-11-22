@@ -64,6 +64,14 @@
       <section id="chatView">
         <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
         <div class="composer-wrap">
+          <div id="quickPermission" class="perm" hidden>
+            <h4>Engedélykérés · <code id="quickPermissionTool"></code></h4>
+            <pre id="quickPermissionInput"></pre>
+            <div class="row">
+              <button id="quickPermissionAllow" class="btn go">Engedélyezés egyszer</button>
+              <button id="quickPermissionDeny" class="btn no">Elutasítás</button>
+            </div>
+          </div>
           <div class="composer" id="composer">
             <div class="composer-inner">
               <textarea id="input" rows="1" placeholder="Írj üzenetet, vagy / a parancsokhoz…" aria-label="Üzenet"></textarea>

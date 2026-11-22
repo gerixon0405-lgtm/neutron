@@ -168,6 +168,7 @@ function defaultModel() {
 // ---------- rendering ----------
 
 function renderChat() {
+  renderQuickPermission();
   updateArtifacts();
   const th = $("#thread");
   th.innerHTML = "";
@@ -273,7 +274,10 @@ function updateBlock(b) {
     el.querySelector("pre").textContent = toolArg(b.input) || JSON.stringify(b.input, null, 2);
     const row = el.querySelector(".row");
     el.classList.toggle("answered", !!b.answer);
-    if (b.answer) { row.innerHTML = `<span class="meta">${b.answer === "deny" ? "✕ Elutasítva" : "✓ Engedélyezve"}</span>`; return; }
+    if (b.answer || !pendingPermissions.has(b)) {
+      row.textContent = b.answer === "deny" ? "✕ Elutasítva" : b.answer ? "✓ Engedélyezve" : "A kérés lejárt.";
+      return;
+    }
     row.innerHTML = "";
     const btn = (label, cls, ans) => {
       const x = document.createElement("button");
@@ -357,14 +361,28 @@ function cancelWake(c, b, quiet) {
 }
 setInterval(() => wakes.forEach(updateBlock), 1000);
 
+const pendingPermissions = new Set();
+
+function renderQuickPermission() {
+  const b = [...pendingPermissions].find(request => request.chatId === chat?.id);
+  $("#quickPermission").hidden = !b;
+  if (!b) return;
+  $("#quickPermissionTool").textContent = b.tool;
+  $("#quickPermissionInput").textContent = b.input?.command || JSON.stringify(b.input ?? {}, null, 2);
+  $("#quickPermissionAllow").onclick = () => answerPerm(b, "allow");
+  $("#quickPermissionDeny").onclick = () => answerPerm(b, "deny");
+}
+
 function answerPerm(b, ans) {
-  const c = open.get(b.chatId) || chat;
+  const c = open.get(b.chatId);
+  if (!c || !live.has(c.id) || !pendingPermissions.delete(b)) return;
   const resp = ans === "deny"
     ? { behavior: "deny", message: "A felhasználó elutasította ezt a műveletet." }
     : { behavior: "allow", updatedInput: b.input, ...(ans === "always" ? { updatedPermissions: b.suggestions } : {}) };
   N.cc.respond(c, b.requestId, resp);
   b.answer = ans;
   updateBlock(b);
+  renderQuickPermission();
 }
 
 let rafPending = new Set();
@@ -586,10 +604,14 @@ N.cc.onEvent(({ chatId, ev }) => {
 
   if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
     const it = currentTurn(c);
-    appendBlock(c, it, {
+    if ([...pendingPermissions].some(b => b.chatId === chatId && b.requestId === ev.request_id)) return;
+    const request = {
       type: "perm", chatId, requestId: ev.request_id, tool: ev.request.tool_name,
       input: ev.request.input, suggestions: ev.request.permission_suggestions,
-    });
+    };
+    pendingPermissions.add(request);
+    appendBlock(c, it, request);
+    renderQuickPermission();
     window.dispatchEvent(new CustomEvent("neutron-permission",{detail:chatId}));
     if (chat?.id !== chatId) toast(`„${c.title}”: engedélyt kér (${ev.request.tool_name})`);
     return;
@@ -624,6 +646,10 @@ function finishTurn(c, it) {
   }
   window.dispatchEvent(new CustomEvent("neutron-turn-ended",{detail:{id:c.id,turn:it}}));
   live.delete(c.id);
+  for (const request of pendingPermissions) {
+    if (request.chatId === c.id) pendingPermissions.delete(request);
+  }
+  renderQuickPermission();
   if (c.provider !== "codex" && it.meta !== "Leállítva") scanWake(c, it);
   it.blocks.forEach((b) => { if (b.type === "thinking") b.done = true; if (b.type === "tool" && b.result == null) { b.result = "(megszakítva)"; b.isError = true; } });
   if (chat && c.id === chat.id) {

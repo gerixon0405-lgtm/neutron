@@ -558,3 +558,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 #gmailFeedback { white-space:pre-wrap; max-height:130px; overflow:auto; }
 #gmailDisconnect { margin-top:8px; }
 #settingsDialog [hidden] { display:none; }
+
+#quickPermission { width: 100%; margin: 0 0 8px; animation: none; }
+#quickPermission[hidden] { display: none; }
+#quickPermission pre { max-height: 110px; overflow-wrap: anywhere; }
