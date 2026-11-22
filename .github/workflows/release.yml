@@ -47,6 +47,8 @@ jobs:
         run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance
       - name: Test FCC model catalog
         run: node scripts/test-fcc-catalog.js
+      - name: Test direct Windows maintenance command
+        run: node scripts/test-maintenance-command.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

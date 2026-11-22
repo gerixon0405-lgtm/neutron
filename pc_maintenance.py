@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 import json
 import subprocess
+import sys
+
+from desktop_lock import file_lock
 
 TASK = r"$task = @{TaskPath='\Microsoft\Windows\Defrag\';TaskName='ScheduledDefrag'};"
 STATUS = """
@@ -85,3 +88,32 @@ if ($p.ExitCode -notin 0,3010) { throw "A PnPUtil hibakódja: $($p.ExitCode)" }
     matches=[r for r in rows if any(query.casefold() in str(v).casefold() for v in r.values())]
     matches.sort(key=lambda r:tuple(str(v or "") for v in r.values()))
     return {"total":len(matches),"items":matches[start:start+40],"next_offset":str(start+40) if start+40<len(matches) else None}
+
+
+def optimize_system_drive():
+    if os.name != "nt":
+        raise ValueError("A meghajtóoptimalizálás Windowson érhető el.")
+    lock = Path.home()/".neutron-optimize.lock"
+    try:
+        with file_lock(lock,nonblocking=True):
+            before = maintain("inspect")
+            result = powershell(r"""
+$drive = $env:SystemDrive
+if ($drive -notmatch '^[A-Z]:$') { throw 'Nem azonosítható a Windows rendszermeghajtója.' }
+$p = Start-Process -FilePath "$env:SystemRoot\System32\defrag.exe" -ArgumentList $drive,'/O','/U' -Verb RunAs -PassThru -Wait
+@{drive=$drive;exit_code=$p.ExitCode} | ConvertTo-Json -Compress
+""",timeout=7200)
+    except BlockingIOError:
+        raise ValueError("A Neutron már futtat meghajtóoptimalizálást.") from None
+    return {**result, "before":before}
+
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(optimize_system_drive()))
+    except subprocess.TimeoutExpired:
+        print("Lejárt a várakozási idő. A Windows művelete még futhat.",file=sys.stderr)
+        sys.exit(1)
+    except (OSError,ValueError) as exc:
+        print(str(exc),file=sys.stderr)
+        sys.exit(1)

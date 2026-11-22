@@ -468,7 +468,7 @@ function hasChatProvider(c) {
 function send() {
   const box = $("#input");
   const text = box.value.trim();
-  if (!text || !chat || !hasChatProvider(chat)) return;
+  if (!text || !chat) return;
   if (live.has(chat.id)) return toast("Várd meg a választ, vagy állítsd le (Esc).");
   closePop();
   const cmd = text.startsWith("/") ? text.slice(1).split(/\s/)[0] : null;
@@ -482,7 +482,9 @@ function send() {
   submit(chat, text);
 }
 
-function submit(c, text, wake = false, shot = null) {
+async function submit(c, text, wake = false, shot = null) {
+  const optimize = !wake && await N.maintenance.matches(text);
+  if (live.has(c.id) || (!optimize && !hasChatProvider(c))) return;
   const active = chat && c.id === chat.id;
   if (!c.items.length) {
     if (active) $("#thread").innerHTML = "";
@@ -495,8 +497,24 @@ function submit(c, text, wake = false, shot = null) {
   c.items.push(u);
   if (active) $("#thread").append(itemEl(u));
   live.set(c.id, { idx: new Map(), streamed: new Set(), stderr: "" });
-  currentTurn(c);
+  const it = currentTurn(c);
+  if (optimize) live.get(c.id).maintenance = true;
   if (active) setBusyUi(); else renderList();
+  if (optimize) {
+    appendBlock(c,it,{type:"text",text:"A Windows a rendszermeghajtóhoz illő optimalizálást futtatja. Ha jóváhagyást kér, engedélyezd a Windows ablakában."});
+    try {
+      const {drive,exit_code,before} = await N.maintenance.optimize();
+      const free = (before.system_drive_free_bytes / 2 ** 30).toFixed(1);
+      const measurements = `Induláskor ${before.cpu_percent_sample}% CPU-terhelés, ${before.memory_percent}% memóriahasználat és ${free} GiB szabad tárhely.`;
+      if (exit_code !== 0) throw Error(`A Windows nem fejezte be sikeresen a ${drive} optimalizálását. Kilépési kód: ${exit_code}. ${measurements}`);
+      appendBlock(c,it,{type:"text",text:`A Windows sikeresen befejezte a ${drive} rendszermeghajtó optimalizálását. ${measurements}`});
+    } catch (error) {
+      appendBlock(c,it,{type:"error",text:error.message});
+    }
+    it.meta = "Windows meghajtóoptimalizálás";
+    finishTurn(c,it);
+    return;
+  }
   const actual = { ...c };
   const effortKey = c.provider === "codex" ? "codexEffort" : "effort";
   if (!effortLevels(c).includes(actual[effortKey])) actual[effortKey] = "";
@@ -507,6 +525,7 @@ function submit(c, text, wake = false, shot = null) {
 function stop() {
   if (!chat || !live.has(chat.id)) return;
   const c = chat;
+  if (live.get(c.id).maintenance) return toast("A futó Windows-művelet állapota a Windows ablakában látható.");
   if (c.provider === "codex") return N.cc.stop(c.id);
   N.cc.control(c, { subtype: "interrupt" });
   setTimeout(() => { if (live.has(c.id)) { N.cc.stop(c.id); } }, 4000);

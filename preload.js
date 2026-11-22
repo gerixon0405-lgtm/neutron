@@ -46,6 +46,10 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     onEvent: on("voice:event"),
   },
   codexModels: () => ipcRenderer.invoke("codex:models"),
+  maintenance: {
+    matches: text => ipcRenderer.invoke("maintenance:matches", text),
+    optimize: () => ipcRenderer.invoke("maintenance:optimize")
+  },
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   accounts: {
     create: () => ipcRenderer.invoke("accounts:create"),

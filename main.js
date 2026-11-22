@@ -319,6 +319,16 @@ ipcMain.handle("dir:pick", async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 ipcMain.handle("home", () => HOME);
+ipcMain.handle("maintenance:matches", (_, text) =>
+  runtime.win && typeof text === "string" && require("./maintenance-command").isOptimizationRequest(text));
+ipcMain.handle("maintenance:optimize", () => new Promise((resolve, reject) => {
+  if (!runtime.win) return reject(Error("Ez a művelet Windowson érhető el."));
+  execFile(runtime.python, [path.join(__dirname, "pc_maintenance.py")], {windowsHide:true}, (err, out, stderr) => {
+    if (err) return reject(Error(stderr.trim() || err.message));
+    try { resolve(JSON.parse(out)); } catch { reject(Error("A Windows eredménye nem olvasható.")); }
+  });
+}));
+
 ipcMain.handle("accounts:create", () => createAccountDir());
 ipcMain.handle("accounts:remove", (_, dir) => removeAccountDir(dir));
 ipcMain.handle("accounts:status", (_, id) => accountStatus(id));

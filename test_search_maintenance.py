@@ -58,3 +58,16 @@ class SearchAndMaintenance(unittest.TestCase):
         self.assertIn("DriverVersion",result["items"][0])
         self.assertLessEqual(len(result["items"]),40)
         self.assertIn("items",pc_maintenance.drivers("problems"))
+
+    @unittest.skipUnless(os.name=="nt","Windows drive optimization")
+    def test_optimization_waits_for_native_exit(self):
+        import contextlib
+        with patch.object(pc_maintenance,"file_lock",return_value=contextlib.nullcontext()), \
+             patch.object(pc_maintenance,"maintain",return_value={"memory_percent":56}) as inspect, \
+             patch.object(pc_maintenance,"powershell",return_value={"drive":"C:","exit_code":8}) as execute:
+            result=pc_maintenance.optimize_system_drive()
+        inspect.assert_called_once_with("inspect")
+        self.assertIn("defrag.exe",execute.call_args.args[0])
+        self.assertIn("'/O'",execute.call_args.args[0])
+        self.assertIn("-Wait",execute.call_args.args[0])
+        self.assertEqual(result,{"drive":"C:","exit_code":8,"before":{"memory_percent":56}})
