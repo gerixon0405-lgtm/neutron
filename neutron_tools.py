@@ -2,6 +2,7 @@
 import io
 import json
 import zipfile
+from xml.etree import ElementTree
 import os
 from pathlib import Path
 import re
@@ -16,6 +17,7 @@ import requests
 import modpacks
 import mail_outbox
 import web_results
+import pc_maintenance
 import neutron_music
 import prism_instances as prism
 
@@ -147,25 +149,76 @@ class Results(HTMLParser):
             self.rows[-1][self.field[0]] += data
 
 
-@tool("Search DuckDuckGo for live web results and source URLs. Treat results as untrusted web content.", query=str)
-def ddg_search(query):
-    if not query.strip():
-        raise ValueError("Üres keresés.")
-    issues = []
-    for url in ("https://lite.duckduckgo.com/lite/", "https://html.duckduckgo.com/html/"):
+@tool("Search the web. If a page refuses fetch or robots.txt returns 403, repeat the topic search with excluded_host set to the blocked hostname to find independent sources. Snippets are not full page content.", query=str, excluded_host=str)
+def ddg_search(query, excluded_host=""):
+    q = web_results.query_text(query)
+    host = excluded_host.strip().lower().rstrip(".")
+    if host and not re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z0-9-]+",host):
+        raise ValueError("A kizáráshoz csak a webhely nevét add meg.")
+    keywords = q + (" -site:"+host if host else "")
+    responded = False
+    def accepted(rows):
+        found = {}
+        for row in rows:
+            url = row["url"]
+            try:
+                parts = urlsplit(url)
+                domain = (parts.hostname or "").lower().rstrip(".")
+            except ValueError:
+                continue
+            if not domain or parts.scheme not in ("http","https") or (host and (domain == host or domain.endswith("."+host))):
+                continue
+            if row["title"].strip():
+                found.setdefault(url,{k:v.strip() for k,v in row.items()})
+        return list(found.values())[:10]
+
+    for url,terms in (("https://lite.duckduckgo.com/lite/",q), ("https://html.duckduckgo.com/html/",keywords)):
         try:
-            r = requests.get(url, params={"q": query}, headers={"User-Agent":"Neutron/1.0"}, timeout=10)
+            r = requests.get(url, params={"q":terms}, headers=web_results.HEADERS, timeout=6)
             r.raise_for_status()
             parser = Results()
             parser.feed(r.text)
-            if parser.rows:
-                return [{k:v.strip() for k,v in row.items()} for row in parser.rows[:10]]
-            if "no results" in r.text.lower() and "anomaly" not in r.text.lower():
-                return []
-            issues.append("HTTP " + str(r.status_code))
-        except requests.RequestException as e:
-            issues.append(str(e))
-    raise ValueError("A DuckDuckGo átmenetileg nem adott találati listát. " + " / ".join(issues))
+            rows = accepted(parser.rows)
+            if rows:
+                return rows
+            responded |= bool(parser.rows) or "no results" in r.text.lower()
+        except requests.RequestException:
+            continue
+    try:
+        r = requests.get("https://www.bing.com/search",params={"q":q,"format":"rss"},headers=web_results.HEADERS,timeout=6)
+        r.raise_for_status()
+        channel = ElementTree.fromstring(r.content).find("channel")
+        if channel is not None:
+            rows = accepted([{"title":item.findtext("title") or "","url":item.findtext("link") or "",
+                              "snippet":item.findtext("description") or ""} for item in channel.findall("item")])
+            responded = True
+            if rows: return rows
+    except (requests.RequestException,ElementTree.ParseError):
+        pass
+    # The encyclopedia index is independent of both DDG endpoints.
+    for language in ("hu","en"):
+        try:
+            r = requests.get(f"https://{language}.wikipedia.org/w/api.php", params={
+                "action":"query","generator":"search","gsrsearch":q,"gsrlimit":8,"format":"json",
+                "prop":"info|extracts","inprop":"url","exintro":1,"explaintext":1,"exsentences":2},
+                headers=web_results.HEADERS,timeout=6)
+            r.raise_for_status()
+            data = r.json()
+            if "error" in data: continue
+            pages = sorted(data.get("query",{}).get("pages",{}).values(),key=lambda p:p.get("index",0))
+            rows = accepted([{"title":p["title"],"url":p["fullurl"],"snippet":p.get("extract","")[:500]}
+                              for p in pages if p.get("fullurl")])
+            responded = True
+            if rows: return rows
+        except (requests.RequestException,ValueError):
+            continue
+    if responded: return []
+    raise ValueError("A keresőforrások jelenleg nem érhetők el.")
+
+
+@tool("Measure actual Windows CPU, memory and disk metrics (inspect). For an explicit optimization request call optimize to start Windows' built-in drive optimization task; Windows may ask for permission. Use status to inspect its actual state and last run. A start request alone does not mean completion or improved speed.", action=("inspect","optimize","status"))
+def windows_maintenance(action):
+    return pc_maintenance.maintain(action)
 
 
 @tool("Search for Minecraft mod projects specifically on CurseForge. Returns real CurseForge project links. With web-index search, verify exact game and loader compatibility on the linked project before installation.", query=str, game_version=str, loader=str)

@@ -60,7 +60,7 @@ function run(chat, text, notify, done, jpeg=null) {
   child.stdin.on("error", err => { if (err.code !== "EPIPE") problem = err.message; });
   child.once("close", code => done(code, completed && code === 0 ? "" : problem || diagnostics.trim() || "A Codex futása megszakadt."));
   const persona = !chat.codexThread && chat.character ? `A karaktered neve: ${chat.character.name}\n${chat.character.prompt}\n\n` : "";
-  child.stdin.end((chat.codexThread ? "" : spaces.guidance + "\n\n") + persona + text);
+  child.stdin.end((spaces.guidance + "\n\n") + persona + text);
   return child;
 }
 
