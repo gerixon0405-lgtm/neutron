@@ -238,7 +238,7 @@ function showVoiceHud(message){
   if (!overlay && message) {
     // GNOME Wayland delegates top-level window placement to the compositor. XWayland can position this small HUD.
     const flags = process.platform==="linux" && process.env.XDG_SESSION_TYPE==="wayland" && process.env.DISPLAY ? ["--ozone-platform=x11"] : [];
-    overlay=spawn(process.execPath,[...flags,path.join(__dirname,"voice-overlay.js")],{stdio:["pipe","ignore","ignore"]});
+    overlay=spawn(process.execPath,[...flags,...(app.isPackaged?["--neutron-voice-overlay"]:[path.join(__dirname,"voice-overlay.js")])],{stdio:["pipe","ignore","ignore"]});
     const child=overlay;
     child.stdin.on("error",()=>{});
     child.on("error",()=>{if(overlay===child)overlay=null;});

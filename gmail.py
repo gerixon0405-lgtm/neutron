@@ -9,6 +9,7 @@ import smtplib
 import ssl
 import sys
 import time
+from email.errors import HeaderParseError
 from email import policy
 from email.headerregistry import Address
 from email.message import EmailMessage
@@ -32,7 +33,7 @@ def address(value):
         if not a.username or "." not in domain or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",x) for x in domain.split(".")):
             raise ValueError()
         return Address(username=a.username,domain=domain).addr_spec
-    except (ValueError,UnicodeError,IndexError) as err:
+    except (ValueError,HeaderParseError,IndexError) as err:
         raise ValueError("Érvénytelen e-mail-cím: "+value[:120]) from err
 
 
@@ -150,7 +151,9 @@ def deliver(credentials,slot,to,subject,body,message_id):
     return send_api(credentials,slot,msg)
 
 
-def smtp_rejection(code):
+def smtp_rejection(code,reason=b""):
+    if b"5.4.5" in reason or b"daily user sending" in reason.lower():
+        return DeliveryError("pending","Elérted a Gmail napi küldési korlátját.",86400)
     if code==535:
         return DeliveryError("auth","A Gmail-hitelesítés lejárt. Csatlakoztasd újra a fiókot.")
     if 400<=code<500:
@@ -162,17 +165,17 @@ def send_smtp(cred,to,msg):
     try:
         client=smtp_login(cred["email"],cred["password"])
     except smtplib.SMTPResponseException as e:
-        raise smtp_rejection(e.smtp_code) from None
+        raise smtp_rejection(e.smtp_code,e.smtp_error) from None
     except OSError:
         raise DeliveryError("pending","A Gmail SMTP-kapcsolat nem elérhető.",120) from None
     try:
         refused=client.send_message(msg,from_addr=cred["email"],to_addrs=[to])
         if refused:
-            raise smtp_rejection(next(iter(refused.values()))[0])
+            raise smtp_rejection(*next(iter(refused.values())))
     except smtplib.SMTPRecipientsRefused as e:
-        raise smtp_rejection(next(iter(e.recipients.values()))[0]) from None
+        raise smtp_rejection(*next(iter(e.recipients.values()))) from None
     except smtplib.SMTPResponseException as e:
-        raise smtp_rejection(e.smtp_code) from None
+        raise smtp_rejection(e.smtp_code,e.smtp_error) from None
     except (OSError,smtplib.SMTPServerDisconnected):
         raise DeliveryError("unknown","A kapcsolat megszakadt küldés közben. Ellenőrizd az Elküldött leveleket.") from None
     finally:

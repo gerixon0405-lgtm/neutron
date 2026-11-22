@@ -56,6 +56,8 @@ def connect(cred):
         gmail.vault(slot,cred)
         try:
             with db:
+                if old and old["email"] != cred["email"]:
+                    db.execute("UPDATE delivery SET state='cancelled' WHERE state='pending' AND batch IN (SELECT id FROM batch WHERE email=?)",(old["email"],))
                 db.execute("INSERT OR REPLACE INTO account(singleton,email,slot,method) VALUES(1,?,?,?)",
                            (cred["email"],slot,cred["method"]))
         except Exception:

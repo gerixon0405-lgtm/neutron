@@ -1,9 +1,9 @@
 {
   "name": "neutron",
   "productName": "Neutron",
-  "version": "1.1.0",
-  "description": "Neutron AI-munkat\u00e9r",
-  "main": "main.js",
+  "version": "1.1.1",
+  "description": "Neutron AI-munkatér",
+  "main": "desktop.js",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --publish never"
