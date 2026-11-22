@@ -1,0 +1,55 @@
+name: Microsoft Store package
+on:
+  workflow_dispatch:
+    inputs:
+      identity:
+        description: Package/Identity/Name
+        required: true
+      publisher:
+        description: Package/Identity/Publisher (CN=...)
+        required: true
+      publisher_display:
+        description: Package/Properties/PublisherDisplayName
+        required: true
+      display_name:
+        description: Reserved Microsoft Store product name
+        required: true
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', cache: npm}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: npm ci --no-fund --no-audit
+      - run: ./scripts/windows-runtime.ps1
+      - name: Build Store package
+        env:
+          STORE_ID: ${{ inputs.identity }}
+          STORE_PUBLISHER: ${{ inputs.publisher }}
+          STORE_AUTHOR: ${{ inputs.publisher_display }}
+          STORE_NAME: ${{ inputs.display_name }}
+        shell: pwsh
+        run: |
+          node -e "const fs=require('node:fs'),p=require('./package.json'),e=process.env;p.neutronStoreBuild=true;p.build.appx={identityName:e.STORE_ID,publisher:e.STORE_PUBLISHER,publisherDisplayName:e.STORE_AUTHOR,displayName:e.STORE_NAME,applicationId:'Neutron',languages:['hu-HU']};fs.writeFileSync('package.json',JSON.stringify(p));"
+          npm run dist -- --win appx --x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead((Get-Item dist/*.appx).FullName)
+          try {
+            $reader = [IO.StreamReader]::new($archive.GetEntry('AppxManifest.xml').Open())
+            [xml]$manifest = $reader.ReadToEnd()
+            $reader.Dispose()
+            if ($manifest.Package.Identity.Name -cne $env:STORE_ID -or $manifest.Package.Identity.Publisher -cne $env:STORE_PUBLISHER) { throw 'Store identity mismatch' }
+            if (!$archive.GetEntry('app/resources/python/python.exe')) { throw 'Python runtime missing' }
+          } finally { $archive.Dispose() }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neutron-store-package
+          path: dist/*.appx
+          if-no-files-found: error

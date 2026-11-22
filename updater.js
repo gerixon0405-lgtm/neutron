@@ -1,7 +1,9 @@
 const {app,ipcMain}=require("electron");
 function register(){
   let state={message:"A forrásból indított példány fejlesztői változat.",version:app.getVersion()},check;
-  if(app.isPackaged && (process.platform==="win32" || process.env.APPIMAGE)){
+  if(app.isPackaged && require("./package.json").neutronStoreBuild){
+    state.message="A frissítéseket a Microsoft Store kezeli.";
+  }else if(app.isPackaged && (process.platform==="win32" || process.env.APPIMAGE)){
     const {autoUpdater}=require("electron-updater");
     autoUpdater.autoDownload=true;
     autoUpdater.autoInstallOnAppQuit=true;
