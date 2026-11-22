@@ -50,3 +50,11 @@ class SearchAndMaintenance(unittest.TestCase):
         measured=pc_maintenance.maintain("inspect")
         self.assertGreater(measured["system_drive_total_bytes"],0)
         self.assertIn("memory_percent",measured)
+
+    @unittest.skipUnless(os.name=="nt","Windows driver inventory")
+    def test_real_driver_inventory(self):
+        result=pc_maintenance.drivers("list")
+        self.assertGreater(result["total"],0)
+        self.assertIn("DriverVersion",result["items"][0])
+        self.assertLessEqual(len(result["items"]),40)
+        self.assertIn("items",pc_maintenance.drivers("problems"))

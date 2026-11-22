@@ -216,6 +216,11 @@ def ddg_search(query, excluded_host=""):
     raise ValueError("A keresőforrások jelenleg nem érhetők el.")
 
 
+@tool("Inspect Windows device driver names, providers, versions and signatures (list), or device error codes (problems). Filter using query and continue with next_offset. For requested updates open Windows Update (updates). For an explicitly requested local driver installation, install lets the user pick the specific INF package and approve Windows elevation. Afterward recheck devices and versions; processing a package does not guarantee it replaced the active driver.", action=("list","problems","updates","install"), query=str, offset=str)
+def windows_drivers(action,query="",offset="0"):
+    return pc_maintenance.drivers(action,query,offset)
+
+
 @tool("Measure actual Windows CPU, memory and disk metrics (inspect). For an explicit optimization request call optimize to start Windows' built-in drive optimization task; Windows may ask for permission. Use status to inspect its actual state and last run. A start request alone does not mean completion or improved speed.", action=("inspect","optimize","status"))
 def windows_maintenance(action):
     return pc_maintenance.maintain(action)

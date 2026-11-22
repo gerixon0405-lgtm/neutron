@@ -758,11 +758,27 @@ function switchModel(provider, model) {
 }
 
 $("#modeChip").onclick = () => {
-  const cx = chat.provider === "codex";
+  const target = chat;
+  const cx = target.provider === "codex";
   popover($("#modeChip"), {
     items: Object.entries(cx ? { "read-only": "Csak olvasás", "workspace-write": "A munkamappa szerkesztése" } : MODES)
-      .map(([value, label]) => ({ value, label })), current: cx ? chat.codexSandbox || "read-only" : chat.mode,
-    onPick: m => {
+      .map(([value, label]) => ({ value, label })).concat(
+        [{value:"add-folder",label:"Mappa vagy meghajtó hozzáadása…"}],
+        (target.extraDirs || []).map(dir=>({value:"remove:"+dir,label:"Hozzáadott mappa eltávolítása",sub:dir}))),
+      current: cx ? chat.codexSandbox || "read-only" : chat.mode,
+    onPick: async m => {
+      if (live.has(target.id)) return toast("Várd meg a futó választ a jogosultságok módosításához.");
+      if (m === "add-folder" || m.startsWith("remove:")) {
+        if (m === "add-folder") {
+          const dir = await N.pickDir();
+          if (!dir || target !== chat || live.has(target.id)) return;
+          target.extraDirs = [...new Set([...(target.extraDirs || []),dir])];
+          if (cx) target.codexSandbox = "workspace-write";
+        } else target.extraDirs = target.extraDirs.filter(dir=>dir!==m.slice(7));
+        restartSession(target);
+        if (termChatId === target.id) { N.term.stop(); termChatId = null; }
+        updateChips(); await save(target); return;
+      }
       if (cx) chat.codexSandbox = m; else { chat.mode = cfg.mode = m; N.config.set(cfg); }
       restartSession(chat); updateChips(); save(chat);
     },
@@ -1117,7 +1133,7 @@ function startTerm(extra = []) {
   termChatId = chat.id;
   const args = ["--permission-mode", chat.mode, ...(chat.model ? ["--model", chat.model] : []),
     ...(effortLevels(chat).includes(chat.effort) ? ["--effort", chat.effort] : []), ...extra];
-  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
+  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd,extraDirs:chat.extraDirs}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, extraDirs:chat.extraDirs, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
   $("#termInfo").textContent = `${chat.provider === "codex" ? "Codex" : chat.provider === "fcc" ? "fcc-claude" : "claude · " + accName(chat.provider)} · ${shortDir(chat.cwd)} · ${$("#modelName").textContent}`;
   term.focus();
 }

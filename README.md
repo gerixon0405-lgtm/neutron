@@ -9,3 +9,7 @@ A Beállításokban kezelheted a Codex-, Claude- és Gmail-kapcsolatokat. A Gmai
 A Codex és Claude használatához a megfelelő CLI és bejelentkezés szükséges. Linuxon a segédprogramokhoz rendszer-Python 3, requests, a Gmailhez PyGObject és a Secret Service kulcstartó szükséges. A hangfelismeréshez külön whisper modell és FFmpeg kell. A Spotify lejátszásilista-műveleteihez a helyi Spotify-híd szükséges.
 
 Fejlesztői indítás: npm ci, majd npm start. A csomag verziójával egyező v-verziótag feltöltése elindítja a két platform buildjét és a GitHub Release közzétételét.
+
+A chat jogosultságmenüjében a „Mappa vagy meghajtó hozzáadása…” paranccsal további könyvtárakat adhatsz a csevegéshez. Codex esetén ez szerkesztési módra vált. A menüből egyenként eltávolíthatod a hozzáadott mappákat.
+
+Windowson a chat lekérheti a telepített illesztőprogramok verzióját, a kiadót, az aláírás állapotát és a hibás eszközöket. Megnyithatja a választható Windows-frissítéseket is. Helyi illesztőprogram telepítésekor te választod ki az INF-fájlt, majd a Windows jogosultságkérő ablakában engedélyezheted a PnPUtil futását.

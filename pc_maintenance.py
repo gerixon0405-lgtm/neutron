@@ -24,14 +24,18 @@ if ($t.State -notin 'Running','Queued') {
 """
 
 
-def task(start=False):
+def powershell(script, timeout=50):
     command = Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"
-    script = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$ErrorActionPreference='Stop';" + TASK + (START if start else "") + STATUS
+    script = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$ErrorActionPreference='Stop';" + script
     p = subprocess.run([str(command),"-NoProfile","-NonInteractive","-Command",script],
-                       capture_output=True,timeout=50,encoding="utf-8",errors="replace")
+                       capture_output=True,timeout=timeout,encoding="utf-8",errors="replace")
     if p.returncode:
         raise ValueError((p.stderr.strip() or "A Windows-feladat nem elérhető.").splitlines()[0])
     return json.loads(p.stdout)
+
+
+def task(start=False):
+    return powershell(TASK + (START if start else "") + STATUS)
 
 
 def maintain(action):
@@ -48,3 +52,36 @@ def maintain(action):
         raise ValueError("Ismeretlen művelet.")
     status=task(action=="optimize")
     return {"operation":"Windows meghajtóoptimalizálás","start_requested":action=="optimize",**status}
+
+
+def drivers(action, query="", offset="0"):
+    if os.name != "nt":
+        raise ValueError("Az illesztőprogramok kezelése Windowson érhető el.")
+    if action == "updates":
+        os.startfile("ms-settings:windowsupdate-optionalupdates")
+        return {"opened":"Windows Update – választható frissítések"}
+    if action == "install":
+        return powershell(r"""
+Add-Type -AssemblyName System.Windows.Forms
+$d=New-Object System.Windows.Forms.OpenFileDialog
+$d.Title='Neutron – telepítendő Windows-illesztőprogram kiválasztása'
+$d.Filter='Illesztőprogram (*.inf)|*.inf'
+if ($d.ShowDialog() -ne 'OK') { '{"state":"cancelled"}'; return }
+$file=Get-Item -LiteralPath $d.FileName
+if ($file.Extension -ine '.inf' -or $file.PSIsContainer) { throw 'Válassz egy INF-fájlt.' }
+$p=Start-Process -FilePath "$env:SystemRoot\System32\pnputil.exe" -Verb RunAs -ArgumentList ('/add-driver "'+$file.FullName+'" /install') -PassThru -Wait
+if ($p.ExitCode -notin 0,3010) { throw "A PnPUtil hibakódja: $($p.ExitCode)" }
+@{state='package_processed';inf=$file.Name;restart_required=($p.ExitCode -eq 3010)} | ConvertTo-Json -Compress
+""", timeout=300)
+    if action not in ("list","problems"):
+        raise ValueError("Ismeretlen illesztőprogram-művelet.")
+    start=int(offset)
+    if start < 0: raise ValueError("A kezdősorszám legyen legalább nulla.")
+    if action == "list":
+        script = "Get-CimInstance Win32_PnPSignedDriver | Select-Object DeviceName,DeviceClass,DriverProviderName,DriverVersion,InfName,IsSigned"
+    else:
+        script = "Get-CimInstance Win32_PnPEntity | Where-Object {$null -ne $_.ConfigManagerErrorCode -and $_.ConfigManagerErrorCode -ne 0} | Select-Object Name,PNPClass,ConfigManagerErrorCode,Status"
+    rows=powershell("ConvertTo-Json -InputObject @("+script+") -Compress")
+    matches=[r for r in rows if any(query.casefold() in str(v).casefold() for v in r.values())]
+    matches.sort(key=lambda r:tuple(str(v or "") for v in r.values()))
+    return {"total":len(matches),"items":matches[start:start+40],"next_offset":str(start+40) if start+40<len(matches) else None}
