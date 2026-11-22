@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src neutron-artifact:">
+<title>Neutron</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+<link rel="stylesheet" href="node_modules/@highlightjs/cdn-assets/styles/tokyo-night-dark.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div class="aurora"><i></i><i></i><i></i></div>
+
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img width="44" height="44" src="icon.png" alt="">
+      <div><h1>Neutron</h1><small>AI-munkatér</small></div>
+    </div>
+    <div class="project-bar"><label for="projectSelect">Projekt</label><div><select id="projectSelect" aria-label="Aktív projekt"></select><button class="btn" id="projectFolder" title="Projektmappa megnyitása" aria-label="Projektmappa megnyitása" hidden>↗</button><button class="btn" id="createProject" title="Új projekt" aria-label="Új projekt">＋</button></div></div>
+    <button class="new-chat" id="newChat">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Új csevegés <kbd>Ctrl+N</kbd>
+    </button>
+    <div class="side-actions">
+      <button class="btn" id="charactersBtn">Karakterek</button>
+      <button class="btn" id="voiceSettings">Hangasszisztens</button>
+    </div>
+    <button id="voiceHold" class="voice-hold" title="Tartsd lenyomva a beszédhez"><span id="voiceIcon">◉</span><span><b id="voiceName">Hangasszisztens</b><small id="voiceStatus" role="status">Tartsd lenyomva a beszédhez</small></span></button>
+    <div class="side-actions workspace-actions"><button class="btn" id="artifactsBtn">Artifactok <span id="artifactCount"></span></button></div>
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="search" placeholder="Keresés a csevegésekben…" aria-label="Keresés a csevegésekben">
+    </div>
+    <div class="section-label">Csevegések</div>
+    <nav class="chat-list" id="chatList"></nav>
+    <div class="side-foot">
+      <span class="status-dot" id="fccDot"></span>
+      <span id="fccText">FCC indítása…</span>
+      <button class="link" id="accBtn" title="Kapcsolatok és küldési sor">Beállítások</button>
+
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="toggleSide" title="Oldalsáv (Ctrl+B)" aria-label="Oldalsáv">
+        <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="3" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M7 3v12" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <div class="title" id="title">Neutron</div>
+      <div class="spacer"></div>
+      <button class="chip" id="dirChip" title="Munkakönyvtár"><span>📁</span><span id="dirName">~</span></button>
+      <button class="chip" id="modeChip" title="Engedélyezési mód"><span>🛡</span><span id="modeName">Alap</span></button>
+      <div class="toggle" id="viewToggle">
+        <span class="pill"></span>
+        <button data-view="chat" class="on">Chat</button>
+        <button data-view="term">Terminál</button>
+      </div>
+    </header>
+
+    <div class="workbench"><div class="view">
+      <section id="chatView">
+        <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
+        <div class="composer-wrap">
+          <div class="composer" id="composer">
+            <div class="composer-inner">
+              <textarea id="input" rows="1" placeholder="Írj üzenetet, vagy / a parancsokhoz…" aria-label="Üzenet"></textarea>
+              <button class="send" id="send" title="Küldés (Enter)" aria-label="Küldés">
+                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 15V3M4 8l5-5 5 5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="stop"></span>
+              </button>
+            </div>
+          </div>
+          <div class="composer-tools"><button class="chip" id="modelChip" title="Modell"><span class="dot"></span><span id="modelName">Modell…</span></button><label id="effortBar" hidden><span>Effort <b id="effortName"></b></span><input id="effortSlider" type="range" min="0" step="1" aria-label="Reasoning effort"></label></div>
+          <div class="hint"><kbd>Enter</kbd> küldés · <kbd>Shift+Enter</kbd> új sor · <span id="slashHint"><kbd>/</kbd> parancsok · </span> <kbd>Esc</kbd> leállítás</div>
+        </div>
+      </section>
+      <section id="termView" class="hidden">
+        <div class="term-bar"><span class="lights"><i></i><i></i><i></i></span><span id="termInfo">fcc-claude</span><span class="spacer"></span>
+          <button class="btn" id="termRestart">Újraindítás</button></div>
+        <div class="term-box" id="termBox"></div>
+      </section>
+    </div>
+    <aside id="artifactPane" hidden aria-label="Fájlok és előnézet"><header><strong>Fájlok</strong><button id="closeFiles" class="dismiss" aria-label="Panel bezárása">×</button></header><select id="artifactSelect" aria-label="Fájl kiválasztása"></select><div id="previewSlot"></div><footer><small id="artifactInfo"></small><button id="artifactImport" hidden class="btn">Prism-import</button><button id="artifactSave" class="btn">Mentés…</button></footer></aside></div>
+  </main>
+</div>
+<dialog id="settingsDialog" class="studio" aria-labelledby="settingsTitle">
+  <div class="studio-head"><div><h2 id="settingsTitle">Beállítások</h2><p>Kapcsolatok és e-mail-küldés</p></div><button id="settingsClose" class="dismiss" aria-label="Bezárás">×</button></div>
+  <div class="settings-body">
+    <section><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
+      <div id="gmailLogin">
+        <form id="gmailForm"><label>Gmail- vagy Workspace-cím<input type="email" id="gmailEmail" autocomplete="username" required></label>
+        <label>Google-alkalmazásjelszó<input type="password" id="gmailPassword" autocomplete="off" required></label>
+        <div class="settings-actions"><button class="btn go">Gmail csatlakoztatása</button><button type="button" class="link" id="gmailHelp">Alkalmazásjelszó létrehozása ↗</button></div></form>
+        <details><summary>Bejelentkezés Google OAuth használatával</summary><p>Engedélyezd a Gmail API-t a Google Cloud-projektedben, majd válaszd ki a Desktop app típusú kliens letöltött JSON-fájlját. A küldést a Google oldalán engedélyezheted.</p><button class="btn" id="gmailOAuth">Google-bejelentkezés</button></details>
+      </div>
+      <button class="btn" id="gmailDisconnect" hidden>Gmail leválasztása</button><p id="gmailFeedback" role="status"></p>
+    </section>
+    <section id="outboxSection" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
+    <section><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div></section>
+    <section><h3>AI-fiókok</h3><div id="aiAccounts"></div>
+      <form id="addClaudeForm"><label>Új Claude-fiók neve<input id="newAccountName" maxlength="60" placeholder="Például Munka" required></label><button class="btn">Claude-fiók hozzáadása</button></form>
+      <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
+    </section>
+  </div>
+</dialog>
+<dialog id="projectDialog" class="studio compact" aria-labelledby="projectTitle"><div class="studio-head"><div><h2 id="projectTitle">Új projekt</h2><p>A projekt csevegései közös munkamappát és artifactokat használnak.</p></div><button class="dismiss" aria-label="Bezárás">×</button></div><form class="workspace-body" id="projectForm"><label>Projekt neve<input id="projectName" maxlength="80" required placeholder="Például Minecraft műhely"></label><button class="btn primary">Projekt létrehozása</button></form></dialog>
+
+
+
+<dialog id="newChooser" class="studio" aria-labelledby="chooserTitle">
+  <div class="studio-head"><div><h2 id="chooserTitle">Új csevegés</h2><p>Kivel szeretnél beszélgetni?</p></div>
+    <button type="button" class="dismiss" id="closeChooser" aria-label="Bezárás">×</button></div>
+  <div class="chooser-body"><div id="quickChoices" class="choice-grid"></div>
+    <div class="gallery-title"><h3>Karaktereid</h3><button class="btn" id="addFromChooser">+ Új karakter</button></div>
+    <div id="savedChoices" class="choice-grid"></div></div>
+</dialog>
+<dialog id="characters" class="studio" aria-labelledby="charactersTitle">
+  <div class="studio-head"><div><h2 id="charactersTitle">Karakterstúdió</h2></div>
+    <button type="button" class="dismiss" id="closeCharacters" aria-label="Bezárás">×</button></div>
+  <div class="studio-layout"><nav class="studio-rail" aria-label="Mentett karakterek">
+    <button class="add-profile" id="addProfile">+ Új karakter</button><div id="studioProfiles"></div>
+  </nav>
+  <form id="characterForm">
+    <div class="identity-row"><div id="avatarPreview"></div>
+      <div><h3>Profilkép</h3><button type="button" class="photo-link" id="pickAvatar">Kép kiválasztása</button>
+      <button type="button" class="photo-link" id="clearAvatar" hidden>Eltávolítás</button>
+      <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp" hidden></div></div>
+    <label>Név<input id="characterName" maxlength="80" required placeholder="Például Mira"></label>
+    <label>Személyiség és válaszstílus<textarea id="characterPrompt" maxlength="8000" rows="3" required placeholder="Például türelmes tanár, aki rövid példákkal magyaráz."></textarea></label>
+    <div class="model-fields"><label>Szolgáltató vagy fiók<select id="characterProvider"></select></label>
+      <div class="model-picker"><label for="characterModel">Modell</label>
+        <div class="model-entry"><input id="characterModel" maxlength="256" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="characterModels" aria-expanded="false">
+        <button type="button" aria-label="Modelllista" aria-controls="characterModels" aria-expanded="false">▾</button></div>
+        <div class="model-choices" id="characterModels" role="listbox" aria-label="Választható modellek" tabindex="-1" hidden></div></div></div>
+    <p id="studioStatus" role="status"></p>
+    <div class="dialog-actions"><button type="button" id="deleteCharacter" class="btn no">Törlés</button>
+      <button type="submit" class="btn">Mentés</button><button type="submit" id="startCharacter" class="btn go">Mentés és indítás</button></div>
+  </form></div>
+</dialog>
+<dialog id="voiceDialog" class="studio" aria-labelledby="voiceTitle">
+  <div class="studio-head"><div><h2 id="voiceTitle">Hangasszisztens</h2><p>Tartsd nyomva a gyorsbillentyűt, és mondd el a kérésed.</p></div><button type="button" id="voiceClose" class="dismiss" aria-label="Bezárás">×</button></div>
+  <form id="voiceForm">
+    <div class="identity-row"><div id="assistantPicture"></div><div><button type="button" id="assistantPick" class="photo-link">Profilkép kiválasztása</button>
+      <button type="button" id="assistantClear" class="photo-link">Eltávolítás</button><input hidden type="file" id="assistantFile" accept="image/png,image/jpeg,image/webp"></div></div>
+    <div class="model-fields"><label>Karakter betöltése<select id="assistantCharacter"></select></label><label>Név<input id="assistantName" required maxlength="80"></label></div>
+    <label>Személyiség<textarea id="assistantPrompt" rows="2" maxlength="8000"></textarea></label>
+    <div class="model-fields"><label>Szolgáltató vagy fiók<select id="assistantProvider"></select></label><div class="model-picker"><label for="assistantModel">Modell</label>
+        <div class="model-entry"><input id="assistantModel" maxlength="256" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="assistantModels" aria-expanded="false">
+        <button type="button" aria-label="Modelllista" aria-controls="assistantModels" aria-expanded="false">▾</button></div>
+        <div class="model-choices" id="assistantModels" role="listbox" aria-label="Választható modellek" tabindex="-1" hidden></div></div></div>
+    <div class="model-fields"><label>Beszédgomb<button type="button" class="btn" id="recordKey"></button></label>
+      <label class="tick"><input type="checkbox" id="globalVoice"> Más alkalmazásokból is használható</label></div>
+    <label class="tick"><input type="checkbox" id="voiceScreen"> A beszédgomb felengedésekor a képernyőképet is küldje el a kiválasztott modellnek</label>
+    <div id="sideChoices" hidden><button type="button" class="btn" data-binding="Mouse4">Egér 4 (vissza)</button>
+      <button type="button" class="btn" data-binding="Mouse5">Egér 5 (előre)</button></div>
+    <label>Hanggal indított feladatok munkamappája<button type="button" class="btn" id="voiceFolder"></button></label>
+    <small>A kijelölt mappában a célmodell fájlokat is szerkeszthet.</small>
+    <p id="voiceInfo" role="status"></p>
+    <div class="dialog-actions"><button type="button" id="voiceQuiet" class="btn">Felolvasás leállítása</button><button class="btn go">Mentés</button></div>
+  </form>
+</dialog>
+<div class="toasts" id="toasts"></div>
+
+<script src="node_modules/marked/lib/marked.umd.js"></script>
+<script src="node_modules/dompurify/dist/purify.min.js"></script>
+<script src="node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
+<script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+<script src="workspace-ui.js"></script>
+<script src="hungarian.js"></script>
+<script src="renderer.js"></script>
+<script src="settings.js"></script>
+<script src="voice-ui.js"></script>
+</body>
+</html>

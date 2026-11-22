@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="hu"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:"><title>Neutron hangasszisztens</title>
+<style>
+*{box-sizing:border-box}body{margin:0;height:100vh;border:1px solid #68567d;background:linear-gradient(115deg,#292037,#171320);color:#eee8fa;font:14px system-ui;display:flex;align-items:center;gap:14px;padding:15px}
+img{width:54px;height:54px;object-fit:cover;border-radius:17px}strong{font-size:14px}p{margin:4px 0 0;color:#cfc0df;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+body{border-radius:16px;overflow:hidden}#phase{margin-left:10px;color:#bbabf0;font:700 10px system-ui;letter-spacing:.08em;text-transform:uppercase}body[data-state="recording"]{border-color:#60e4cc}body[data-state="recording"] #phase{color:#60e4cc}body[data-state="speaking"]{border-color:#7eaafa}@media(prefers-reduced-motion:no-preference){body:is([data-state="thinking"],[data-state="acting"],[data-state="working"]) img{animation:pulse 1.2s ease-in-out infinite alternate}}@keyframes pulse{to{box-shadow:0 0 13px #a98be3}}
+</style></head><body><img id="picture" src="icon.png" alt=""><section><strong id="name"></strong><span id="phase"></span><p id="status" role="status"></p></section><script src="voice-hud.js"></script></body></html>
