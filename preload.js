@@ -98,6 +98,21 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     usage: (id) => ipcRenderer.invoke("accounts:usage", id),
   },
   home: () => ipcRenderer.invoke("home"),
+  notices: {
+    complete: notice => ipcRenderer.send("notices:complete",notice),
+    onNotice: on("notices:show"),
+    onOpen: on("notices:open"),
+  },
+  schedules: {
+    list: () => ipcRenderer.invoke("schedules:list"),
+    save: job => ipcRenderer.invoke("schedules:save",job),
+    toggle: id => ipcRenderer.invoke("schedules:toggle",id),
+    remove: id => ipcRenderer.invoke("schedules:delete",id),
+    ready: () => ipcRenderer.send("schedules:ready"),
+    finish: (id,runId,status) => ipcRenderer.send("schedules:finish",{id,runId,status}),
+    onChange: on("schedules:changed"),
+    onRun: on("schedules:run"),
+  },
   cc: {
     send: (chat, text, shot, attachments, retry) => ipcRenderer.send("cc:send", { chat, text, shot, attachments, retry }),
     reset: id=>ipcRenderer.send("cc:reset",id),

@@ -33,7 +33,7 @@ function toast(text, bad = false) {
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, bad ? 6000 : 3000);
 }
 const shortDir = (d) => (d && home && d.startsWith(home) ? "~" + d.slice(home.length) : d || "~");
-const shortModel = (m) => (m ? m.split("/").pop() : "Modell…");
+const shortModel = (m) => (m === NemotronHybrid.id ? NemotronHybrid.label : m ? m.split("/").pop() : "Modell…");
 const save = (c) => N.chats.save(JSON.parse(JSON.stringify(c, (k, v) => (k === "json" ? undefined : v))));
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -103,12 +103,27 @@ function renderList() {
   const q = $("#search").value.toLowerCase();
   const list = $("#chatList");
   list.innerHTML = "";
-  chats.filter((c) => (c.projectId || "") === (cfg.activeProject || "") && c.title.toLowerCase().includes(q)).forEach((c, i) => {
+  const shown=chats.filter(c=>(c.projectId || "")===(cfg.activeProject || "") && c.title.toLowerCase().includes(q));
+  shown.sort((a,b)=>Number(!!b.pinnedAt)-Number(!!a.pinnedAt) || (b.pinnedAt || 0)-(a.pinnedAt || 0) || b.updated-a.updated);
+  shown.forEach((c, i) => {
+    if(i===0 && c.pinnedAt)list.insertAdjacentHTML("beforeend",'<div class="chat-list-group">Rögzítve</div>');
+    if(i>0 && !c.pinnedAt && shown[i-1].pinnedAt)list.insertAdjacentHTML("beforeend",'<div class="chat-list-group">Legutóbbiak</div>');
     const el = document.createElement("div");
     el.className = "chat-item" + (chat && c.id === chat.id ? " active" : "") + (live.has(c.id) ? " busy" : "");
     el.style.setProperty("--i", i);
-    el.innerHTML = `<span>${esc(c.title)}</span><button class="del" title="Törlés" aria-label="Törlés">✕</button>`;
+    el.innerHTML = `<span>${esc(c.title)}</span><button type="button" class="pin-chat" title="${c.pinnedAt?"Rögzítés feloldása":"Csevegés rögzítése"}" aria-label="Csevegés rögzítése" aria-pressed="${!!c.pinnedAt}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6m-5 .2v3.4l-2 2.4v1h8v-1l-2-2.4V2.7m-2 7v4"/></svg></button><button class="del" title="Törlés" aria-label="Törlés">✕</button>`;
     el.onclick = () => selectChat(c.id);
+    const pin=el.querySelector(".pin-chat");
+    pin.onclick=async event=>{
+      event.stopPropagation();
+      pin.disabled=true;
+      const target=await getChat(c.id);
+      if(!target)return;
+      const previous=target.pinnedAt;
+      target.pinnedAt=previous?0:Date.now();
+      try { await save(target);await refreshList(); }
+      catch(error){target.pinnedAt=previous;pin.disabled=false;toast(error.message,true);}
+    };
     el.querySelector(".del").onclick = async (e) => {
       e.stopPropagation();
       if (!confirm(`Törlöd ezt a csevegést?\n„${c.title}”`)) return;
@@ -261,7 +276,8 @@ function itemEl(it) {
 }
 
 function renderTurnMeta(it, body) {
-  const label = [it.elapsedMs == null ? "" : elapsedTime(it.elapsedMs), it.meta].filter(Boolean).join(" · ");
+  const route=it.routed?.model ? (NemotronHybrid.ultra(it.routed.model)?"Nemotron 3 Ultra":"Nemotron 3.5 Super VL") : "";
+  const label = [route,it.routed?.reason,it.elapsedMs == null ? "" : elapsedTime(it.elapsedMs), it.meta].filter(Boolean).join(" · ");
   if (label) body.insertAdjacentHTML("beforeend", `<div class="meta turn-meta">${esc(label)}</div>`);
 }
 
@@ -292,6 +308,11 @@ function blockEl(b) {
     el.type="button";el.className="btn discord-review";
     el.textContent="Discord-jóváhagyás · "+b.target;
     el.onclick=()=>openDiscordReview(b.id);
+  } else if(b.type==="schedule-draft"){
+    el=document.createElement("button");
+    el.type="button";el.className="btn";
+    el.textContent="Ütemezés áttekintése · "+b.job.title;
+    el.onclick=()=>openScheduleDialog(b.job);
   } else if (b.type === "status") {
     el = document.createElement("div"); el.className="retry-status"; el.textContent=b.text; el.setAttribute("role","status");
   } else if (b.type === "error") {
@@ -463,7 +484,7 @@ function schedule(c, b) {
 }
 
 function appendBlock(c, it, b) {
-  if (b.type==="text" && /nemotron[-_. ]3[.-]5/i.test(c.model)) b.hu=true;
+  if (b.type==="text" && /nemotron[-_. ]3[.-]5/i.test(it.routed?.model || c.model)) b.hu=true;
   it.blocks.push(b);
   if (!chat || c.id !== chat.id) return;
   const wrap = blockEls.get(it);
@@ -611,6 +632,12 @@ function send() {
   if (live.has(chat.id)) return toast("Várd meg a választ, vagy állítsd le (Esc).");
   closePop();
   const files=pendingFiles.get(chat.id)||[];
+  const scheduleCommand=/^\/(emlékeztető|ütemezés)(?:\s+(.*))?$/is.exec(text);
+  if(scheduleCommand && !files.length){
+    box.value="";autoGrow();
+    openScheduleDialog({kind:scheduleCommand[1].toLowerCase()==="emlékeztető"?"reminder":"task",text:scheduleCommand[2] || "",chatId:chat.id});
+    return;
+  }
   if(wantsVideoEditor(text)){
     box.value="";autoGrow();
     openVideoFromChat(chat.id,text,files);return;
@@ -626,16 +653,16 @@ function send() {
   submit(chat, text || "Nézd meg a csatolt fájlokat.",false,null,pendingFiles.get(chat.id)||[]);
 }
 
-async function submit(c, text, wake = false, shot = null, files=[]) {
+async function submit(c, text, wake = false, shot = null, files=[], scheduled=null) {
   const optimize = !wake && !files.length && await N.maintenance.matches(text);
-  if (live.has(c.id) || (!optimize && !hasChatProvider(c))) return;
+  if (live.has(c.id) || (!optimize && !hasChatProvider(c))) return false;
   const active = chat && c.id === chat.id;
   if (!c.items.length) {
     if (active) $("#thread").innerHTML = "";
     const title = (c.character ? c.character.name + " · " : "") + text.replace(/\s+/g, " ");
     c.title = title.slice(0, 64) + (title.length > 64 ? "…" : "");
     if (active) $("#title").textContent = c.title;
-    if (!c.projectId) { cfg.lastCwd = c.cwd; N.config.set(cfg); }
+    if (!c.projectId && !scheduled) { cfg.lastCwd = c.cwd; N.config.set(cfg); }
   }
   if (!wake) window.dispatchEvent(new Event("neutron-send"));
   if(files.length){
@@ -645,7 +672,7 @@ async function submit(c, text, wake = false, shot = null, files=[]) {
   const u = { role: "user", text, wake, ...(files.length?{files}: {}) };
   c.items.push(u);
   if (active) $("#thread").append(itemEl(u));
-  live.set(c.id, { idx: new Map(), streamed: new Set(), stderr: "" });
+  live.set(c.id, { idx: new Map(), streamed: new Set(), stderr: "", scheduled });
   const it = currentTurn(c);
   if (optimize) live.get(c.id).maintenance = true;
   if (active) setBusyUi(); else renderList();
@@ -665,6 +692,7 @@ async function submit(c, text, wake = false, shot = null, files=[]) {
     return;
   }
   const actual = { ...c };
+  if(scheduled && actual.mode==="bypassPermissions")actual.mode="default";
   const effortKey = c.provider === "codex" ? "codexEffort" : "effort";
   if (!effortLevels(c).includes(actual[effortKey])) actual[effortKey] = "";
   const state=live.get(c.id);
@@ -672,6 +700,7 @@ async function submit(c, text, wake = false, shot = null, files=[]) {
   state.rateFailures=0;
   sendTurnRequest(actual,text,shot,files);
   save(c).then(refreshList);
+  return true;
 }
 
 function sendTurnRequest(c,text,shot,files,retry) {
@@ -733,6 +762,13 @@ N.cc.onEvent(({ chatId, ev }) => {
   if (!c) return;
   let st = live.get(chatId);
   if(st?.retryTimer)return;
+  if(ev.type==="neutron-model" && st){
+    currentTurn(c).routed={model:ev.model,reason:ev.reason};
+    c.lastRoutedModel=ev.model;
+    if(ev.sessionId)c.sessionId=ev.sessionId;
+    c.hybridHasImages=ev.hasImages;
+    return;
+  }
   if(st && ev.error && isRateLimit(ev.error))st.rateError=true;
   if (ev.type === "codex") {
     if (!st) return;
@@ -862,6 +898,7 @@ N.cc.onEvent(({ chatId, ev }) => {
 });
 
 function finishTurn(c, it) {
+  const scheduled=live.get(c.id)?.scheduled;
   it.elapsedMs = Math.max(0, Date.now() - it.started);
   for(const b of it.blocks) if(b.hu && b.type==="text") b.text=repairHungarian(b.text);
   const paths=new Set(it.changedPaths || []);
@@ -869,9 +906,10 @@ function finishTurn(c, it) {
   const success=it.blocks.filter(b=>b.type==="tool" && !b.isError && b.result!=null);
   for(const b of success) if(["Write","Edit","MultiEdit"].includes(b.name) && b.input?.file_path) paths.add(b.input.file_path);
   const build=success.some(b=>/\b(?:build|vite|webpack|parcel)\b/i.test(b.input?.command || ""));
+  let outputReady=Promise.resolve();
   if(it.started && (paths.size || build)) {
     const existing=it.blocks.filter(b=>b.type==="attachment").map(b=>b.name);
-    N.artifacts.collect({id:c.id,projectId:c.projectId,cwd:c.cwd},{paths:[...paths],build,started:it.started,existing}).then(names=>{
+    outputReady=N.artifacts.collect({id:c.id,projectId:c.projectId,cwd:c.cwd},{paths:[...paths],build,started:it.started,existing}).then(names=>{
       for(const name of names) appendBlock(c,it,{type:"attachment",name});
       if(names.length){save(c);if(view==="gallery")loadGallery();else if(chat?.id===c.id)showFiles(names.find(n=>n.endsWith(".zip")) || names.find(n=>/\.html?$/i.test(n)) || names[0]);}
     }).catch(e=>toast(e.message,true));
@@ -897,6 +935,15 @@ function finishTurn(c, it) {
     setBusyUi();
   } else renderList();
   save(c).then(refreshList);
+  const stopped=it.meta==="Leállítva";
+  const failed=it.blocks.some(b=>b.type==="error");
+  const waiting=it.blocks.some(b=>b.type==="wake" && b.state==="pending");
+  outputReady.then(()=>{
+    if(scheduled)N.schedules.finish(scheduled.id,scheduled.runId,stopped?"stopped":failed?"failed":"done");
+    if(stopped || (waiting && !failed) || (!scheduled && !failed && !it.blocks.some(b=>["text","attachment","tool"].includes(b.type))))return;
+    N.notices.complete({title:failed?"A futás hibával zárult":scheduled?"Az ütemezett futás véget ért":"Elkészült a válasz",
+      body:(scheduled?.title || c.title)+" · "+elapsedTime(it.elapsedMs),chatId:c.id,failed});
+  });
 }
 
 N.cc.onStderr(({ chatId, text }) => {
@@ -987,6 +1034,7 @@ $("#modelChip").onclick = async () => {
   const items = [{ header: true, label: "OpenAI Codex" }, { value: "codex|", label: "Codex · alapmodell" },
     ...codexModels.map(m => ({ value: "codex|" + m, label: m, group: "codex" })),
     { header: true, label: "Free Claude Code (ingyenes modellek)" },
+    {value:"fcc|"+NemotronHybrid.id,label:NemotronHybrid.label,sub:"Ultra az általános feladatokra · Super VL a képekhez és szövegelemzéshez"},
     ...models.map((m) => ({ value: `fcc|${m}`, label: shortModel(m), sub: m.split("/").slice(0, -1).join("/"), group: "fcc free" }))];
   for (const a of accounts()) {
     const st = accStatus.get(a.id);
@@ -1100,6 +1148,7 @@ async function loadModels() {
   lastCatalog = snapshot;
   models = catalog.map(m => m.id);
   fccLevels = Object.fromEntries(catalog.map(m => [m.id, m.levels]));
+  fccLevels[NemotronHybrid.id]=NemotronHybrid.levels(catalog);
   if(view==="video")fillVideoModels();
   if (chat) renderEffort();
   if (characterDialog.open && profileProvider.value === "fcc") fillCharacterModels(profileModel.value);
@@ -1259,7 +1308,7 @@ function modelField(input) {
   field.closest("dialog").addEventListener("close", close);
   return (provider, value) => {
     close();
-    options = provider === "fcc" ? models.map(id => [id,id]) : provider === "codex" ?
+    options = provider === "fcc" ? [...(input===profileModel?[[NemotronHybrid.id,NemotronHybrid.label]]:[]),...models.map(id => [id,id])] : provider === "codex" ?
       [["","A fiók alapmodellje"], ...codexModels.map(id => [id,id])] : CLAUDE_MODELS;
     input.value = value;
     input.required = provider === "fcc";
@@ -1500,6 +1549,7 @@ addEventListener("DOMContentLoaded", async function boot() {
     for (const b of c?.items.flatMap((i) => i.blocks || []) || []) if (b.type === "wake" && b.state === "pending") arm(c, b);
   }
   window.dispatchEvent(new CustomEvent("neutron-ready",{detail:{returning:returning || chats.length>0}}));
+  N.schedules.ready();
   refreshAccounts();
   const syncCatalog = () => { if (!document.hidden) refreshModels().catch(() => {}); };
   window.addEventListener("focus", syncCatalog);

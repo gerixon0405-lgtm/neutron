@@ -162,7 +162,9 @@ $("#videoRender").onclick=async()=>{
     const result=await N.video.render({id:videoJob.id,reviewed:true,excluded,format:$("#videoFormat").value,quality:$("#videoQuality").value,
       captions:$("#videoCaptions").checked,clicks:$("#videoClicks").checked});
     $("#videoPlayer").src=result.url;$("#videoExport").hidden=false;
-    videoState(`Kész · ${result.info.width} × ${result.info.height} · ${result.info.duration.toFixed(1)} mp`);
+    const dimensions=`${result.info.width} × ${result.info.height} · ${result.info.duration.toFixed(1)} mp`;
+    videoState("Kész · "+dimensions);
+    N.notices.complete({kind:"video",title:"Elkészült a videó",body:dimensions});
     $("#videoExport").scrollIntoView({block:"nearest"});
   }catch(error){videoState(error.message.replace(/^Error invoking remote method '[^']+': Error: /,""));}
   finally{busyVideo(false);}

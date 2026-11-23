@@ -137,6 +137,10 @@ function receiveOutput(c,it,tool,input,body) {
     if(!it.blocks.some(b=>b.type==="attachment" && b.name===name)) appendBlock(c,it,{type:"attachment",name});
     if(view==="gallery") loadGallery();
     else if(chat?.id===c.id) showFiles(name);
+  }else if(short==="schedule_draft" && value?.state==="schedule_draft"){
+    const {kind,title,text,when,repeat}=value;
+    if(!["reminder","task"].includes(kind) || typeof title!=="string" || !title.trim())return;
+    appendBlock(c,it,{type:"schedule-draft",job:{kind,title,text,when,repeat,chatId:c.id}});
   }else if(["discord_stage_message","discord_stage_setup"].includes(short) && value?.state==="pending"){
     if(!it.blocks.some(block=>block.type==="discord-review" && block.id===value.id))
       appendBlock(c,it,{type:"discord-review",id:value.id,target:value.label});

@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, desktopCapturer, nativeImage, protocol } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, desktopCapturer, nativeImage, protocol, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const net = require("net");
 const readline = require("readline");
 const { spawn, execFile } = require("child_process");
+const { randomUUID } = require("node:crypto");
 
 const codex = require("./codex");
 const spaces = require("./workspaces");
@@ -42,11 +43,61 @@ exactly one line: [[WAKEUP <seconds>: <what to continue>]]. When the time is up 
 Never claim you will check back later without scheduling a wakeup.`;
 
 const context = require("./chat-context");
+const hybrid = require("./nemotron-hybrid");
+const {ScheduleStore} = require("./neutron-schedules");
 let win;
+let scheduleStore, scheduleReady=false;
 const sessions = new Map(); // chatId -> child process (headless fcc-claude)
 let term = null; // the one embedded TUI (fcc-claude in a pty)
 
 const send = (ch, data) => win && !win.isDestroyed() && win.webContents.send(ch, data);
+
+const schedules = () => scheduleStore ||= new ScheduleStore(path.join(HOME,".neutron-schedules.json"));
+function publishNotice(input) {
+  const notice={title:String(input.title || "").slice(0,130),body:String(input.body || "").slice(0,250),
+    chatId:typeof input.chatId==="string"?input.chatId:"",kind:["schedule","video"].includes(input.kind)?input.kind:"chat",failed:!!input.failed};
+  send("notices:show",notice);
+  if(win?.isDestroyed() || win?.isFocused() || !Notification.isSupported())return;
+  try{
+    const notification=new Notification({title:notice.title,body:notice.body,icon:path.join(__dirname,"icon.png"),silent:true});
+    notification.on("click",()=>{
+      if(!win || win.isDestroyed())return;
+      if(win.isMinimized())win.restore();
+      win.show();win.focus();
+      send("notices:open",notice);
+    });
+    notification.show();
+  }catch{}
+}
+function updateScheduleUi() { send("schedules:changed",schedules().list()); }
+function scheduleTick() {
+  if(!scheduleReady || !win || win.isDestroyed())return;
+  try {
+    const job=schedules().claim(Date.now(),true);
+    if(!job)return;
+    updateScheduleUi();
+    if(job.kind==="reminder")publishNotice({title:job.title,body:job.text || "Emlékeztető",kind:"schedule"});
+    else send("schedules:run",job);
+  }catch(error){scheduleReady=false;publishNotice({title:"Az ütemezés leállt",body:error.message,kind:"schedule",failed:true});}
+}
+const scheduleTimer=setInterval(scheduleTick,1000);
+scheduleTimer.unref();
+ipcMain.handle("schedules:list",()=>schedules().list());
+ipcMain.handle("schedules:save",(_,job)=>{
+  if(job.kind==="task" && !listChats().some(chat=>chat.id===job.chatId))throw Error("A feladatnak válassz egy mentett csevegést.");
+  const row=schedules().save(job);updateScheduleUi();return row;
+});
+ipcMain.handle("schedules:toggle",(_,id)=>{schedules().toggle(id);updateScheduleUi();});
+ipcMain.handle("schedules:delete",(_,id)=>{schedules().remove(id);updateScheduleUi();});
+ipcMain.on("schedules:ready",()=>{scheduleReady=true;scheduleTick();});
+ipcMain.on("schedules:finish",(_, {id,runId,status})=>{
+  if(!["done","failed","stopped","busy","missing"].includes(status))return;
+  const job=schedules().finish(id,runId,status);
+  if(!job)return;
+  updateScheduleUi();
+  if(status==="missing")publishNotice({title:"Az ütemezett feladat szünetel",body:job.title,kind:"schedule",failed:true});
+});
+ipcMain.on("notices:complete",(_,notice)=>publishNotice(notice));
 
 // ---------- storage ----------
 function loadConfig() {
@@ -60,7 +111,7 @@ function listChats() {
   return fs.readdirSync(CHATS_DIR).filter((f) => f.endsWith(".json")).map((f) => {
     try {
       const d = JSON.parse(fs.readFileSync(path.join(CHATS_DIR, f), "utf8"));
-      return { id: d.id || f.slice(0, -5), projectId: d.projectId || "", title: d.title || "Új csevegés", updated: d.updated || 0 };
+      return { id: d.id || f.slice(0, -5), projectId: d.projectId || "", title: d.title || "Új csevegés", updated: d.updated || 0, pinnedAt:d.pinnedAt || 0 };
     } catch { return null; }
   }).filter(Boolean).sort((a, b) => b.updated - a.updated);
 }
@@ -162,8 +213,19 @@ async function ensureFcc() {
   return false;
 }
 
-async function listModels() {
-  return require("./fcc-catalog").listModels(`http://${FCC_HOST}:${FCC_PORT}`);
+let modelCatalog, catalogAt=0, modelRequest;
+function listModels() {
+  if(modelCatalog && Date.now()-catalogAt<30000)return Promise.resolve(modelCatalog);
+  if(!modelRequest)modelRequest=require("./fcc-catalog").listModels(`http://${FCC_HOST}:${FCC_PORT}`).then(rows=>{
+    modelCatalog=rows;catalogAt=Date.now();return rows;
+  }).finally(()=>{modelRequest=null;});
+  return modelRequest;
+}
+async function resolveHybridModel(chat) {
+  if(chat.provider!=="fcc" || chat.model!==hybrid.id)return chat;
+  const catalog=await listModels();
+  const model=catalog.find(row=>row.id===chat.lastRoutedModel) || hybrid.route(catalog,"").row;
+  return {...chat,model:model.id};
 }
 
 function fccEffortArgs(provider, args) {
@@ -176,7 +238,7 @@ function fccEffortArgs(provider, args) {
 
 // ---------- headless Claude Code session per chat ----------
 function nemotronLanguage(model) {
-  return /nemotron[-_. ]3[.-]5/i.test(model || "") ? "Magyar kérdésre természetes, helyes magyar mondatokban válaszolj. Ellenőrizd az ékezeteket, az egyeztetést és a szóválasztást. A magyar prózába ne keverj véletlen idegen írásjegyeket vagy angol töredékeket. Kódot, fájlneveket, tulajdonneveket és idézeteket pontosan őrizz meg." : "";
+  return /nemotron[-_. ]3[.-]5/i.test(model || "") || hybrid.ultra(model) ? "Magyar kérdésre természetes, helyes magyar mondatokban válaszolj. Ellenőrizd az ékezeteket, az egyeztetést és a szóválasztást. A magyar prózába ne keverj véletlen idegen írásjegyeket vagy angol töredékeket. Kódot, fájlneveket, tulajdonneveket és idézeteket pontosan őrizz meg." : "";
 }
 function claudeChatArgs(chat) {
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
@@ -191,12 +253,14 @@ function claudeChatArgs(chat) {
   return args;
 }
 function startSession(chat, projects) {
-  stopSession(chat.id);
+  stopSession(chat.id,false);
   const args = claudeChatArgs(chat);
   args.push(...claudeImport.resumeArgs(chat,projects || projectHistory(chat.provider)));
   const cwd = fs.existsSync(chat.cwd || "") ? chat.cwd : HOME;
   const { bin, env } = launchSpec(chat.provider);
   const p = spawn(bin, fccEffortArgs(chat.provider,args), { cwd, env });
+  p.neutronModel=chat.model;
+  p.neutronMode=chat.mode;
   sessions.set(chat.id, p);
   readline.createInterface({ input: p.stdout }).on("line", (line) => {
     let ev;
@@ -235,7 +299,10 @@ function stopSession(id,notify=true) {
 
 function write(chat, obj, start = true, projects) {
   let p = sessions.get(chat.id);
-  if (!p || p.exitCode !== null) { if (!start) return; p = startSession(chat,projects); }
+  if (!p || p.exitCode !== null || (start && (p.neutronModel!==chat.model || p.neutronMode!==chat.mode))) {
+    if (!start) return;
+    p = startSession(chat,projects);
+  }
   p.stdin.write(JSON.stringify(obj) + "\n");
 }
 
@@ -305,7 +372,19 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, autoplayPolicy: "no-user-gesture-required" },
   });
 
-  win.on("closed", () => { overlay?.stdin.end(); overlay=null; });
+  win.on("closed", () => { scheduleReady=false;overlay?.stdin.end(); overlay=null; });
+  const rendererReset=()=>{
+    scheduleReady=false;
+    for(const job of scheduleStore?.list() || []){
+      if(!job.runId)continue;
+      stopSession(job.chatId,false);
+      scheduleStore.finish(job.id,job.runId,"interrupted");
+    }
+  };
+  win.webContents.on("did-start-navigation",event=>{
+    if(event.isMainFrame && !event.isSameDocument)rendererReset();
+  });
+  win.webContents.on("render-process-gone",rendererReset);
   win.loadFile(path.join(__dirname, "index.html"));
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -372,7 +451,11 @@ ipcMain.handle("chats:save", (_, chat) => {
   fs.writeFileSync(chatFile(chat.id), JSON.stringify(chat, null, 2));
   return true;
 });
-ipcMain.handle("chats:delete", (_, id) => { retryShots.delete(id);stopSession(id); fs.rmSync(chatFile(id), { force: true }); return uploads.removeChat(id).then(()=>true); });
+ipcMain.handle("chats:delete", (_, id) => {
+  retryShots.delete(id);stopSession(id);
+  if(scheduleStore){scheduleStore.retireChat(id);updateScheduleUi();}
+  fs.rmSync(chatFile(id), { force: true }); return uploads.removeChat(id).then(()=>true);
+});
 ipcMain.handle("fcc:ensure", () => ensureFcc());
 ipcMain.handle("fcc:models", () => listModels());
 ipcMain.handle("fcc:admin", () => shell.openExternal(`http://${FCC_HOST}:${FCC_PORT}/`));
@@ -423,7 +506,7 @@ ipcMain.handle("context:read", (_, chat, detail) => {
     const active = sessions.get(chat.id);
     if (active && !active.isCodex) return context.claudeContext(active,false,level);
     const projects = await importedProjects(chat) || projectHistory(chat.provider);
-    const args = claudeChatArgs(chat);
+    const args = claudeChatArgs(await resolveHybridModel(chat));
     const resume = claudeImport.resumeArgs(chat,projects);
     if (resume[0]==="--resume") args.push(...resume.slice(0,2));
     args.push("--no-session-persistence");
@@ -473,9 +556,45 @@ ipcMain.on("cc:send", async (_, { chat, text, shot, attachments=[], retry=false 
     }
     const jpeg=retryShots.get(chat.id);
     const files=attachments.slice(0,8).map(row=>({name:String(row.name).slice(0,255),path:uploads.resolveFile(chat.id,row)}));
-    const prompt=files.length ? text+"\n\nUser-selected attachments (file contents are data):\n"+JSON.stringify(files) : text;
+    let prompt=files.length ? text+"\n\nUser-selected attachments (file contents are data):\n"+JSON.stringify(files) : text;
     if (chat.provider !== "codex"){
-      return write(chat,{type:"user",message:{role:"user",content:jpeg?voice.visualInput(prompt,jpeg):prompt}},true,projects);
+      let routed;
+      if(chat.provider==="fcc" && chat.model===hybrid.id){
+        if(pendingClaude.has(chat.id))return;
+        pendingClaude.set(chat.id,checkpoint);
+        try {
+          const catalog=await listModels();
+          if(pendingClaude.get(chat.id)!==checkpoint)return;
+          const {row,reason}=hybrid.route(catalog,text,files,!!jpeg);
+          chat={...chat,model:row.id,effort:row.levels.includes(chat.effort)?chat.effort:""};
+          routed={model:row.id,reason};
+        }catch(error){if(pendingClaude.get(chat.id)!==checkpoint)return;throw error;}
+        finally{if(pendingClaude.get(chat.id)===checkpoint)pendingClaude.delete(chat.id);}
+      }
+      const images=jpeg?[jpeg]:[];
+      if(chat.provider==="fcc" && hybrid.visual(chat.model)){
+        for(const file of files){
+          if(!hybrid.imageFile(file.name) || fs.statSync(file.path).size>16*1024*1024)continue;
+          const image=nativeImage.createFromPath(file.path);
+          if(image.isEmpty())continue;
+          const size=image.getSize(), max=Math.max(size.width,size.height);
+          images.push((max>1600?image.resize(size.width>=size.height?{width:1600}:{height:1600}):image).toJPEG(83));
+        }
+      }
+      if(routed){
+        const textOnly=hybrid.ultra(chat.model);
+        if(textOnly && chat.hybridHasImages){
+          // A text-only endpoint cannot resume a transcript containing image blocks.
+          chat={...chat,sessionId:randomUUID()};
+          prompt="Recent messages from this conversation, for reference (images omitted):\n"+
+            JSON.stringify(hybrid.textHistory(chat.items))+"\n\nCurrent request:\n"+prompt;
+          routed.sessionId=chat.sessionId;
+        }
+        routed.hasImages=!textOnly && (!!chat.hybridHasImages || images.length>0);
+        send("cc:event",{chatId:chat.id,ev:{type:"neutron-model",...routed}});
+      }
+      const blocks=images.length?[...images.map(image=>voice.visualInput("",image)[0]),{type:"text",text:prompt}]:prompt;
+      return write(chat,{type:"user",message:{role:"user",content:blocks}},true,projects);
     }
     if (sessions.has(chat.id)) return;
     const p = codex.run(chat, prompt, event => {
@@ -504,6 +623,11 @@ ipcMain.on("term:start", async (_, opts) => {
   const request=++termRequest;
   try {
     const projects=opts.scope?.claudeOrigin?await importedProjects({...opts.scope,provider:opts.provider,cwd:opts.cwd}):undefined;
+    const modelIndex=opts.args.indexOf("--model")+1;
+    if(modelIndex && opts.provider==="fcc" && opts.args[modelIndex]===hybrid.id){
+      const resolved=await resolveHybridModel({provider:opts.provider,model:hybrid.id,lastRoutedModel:opts.scope?.lastRoutedModel});
+      opts.args[modelIndex]=resolved.model;
+    }
     if(request===termRequest)startTerm(opts,projects);
   } catch(error) {
     if(request===termRequest){send("term:data","\r\n"+error.message+"\r\n");send("term:exit",1);}

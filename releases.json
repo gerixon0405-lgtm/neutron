@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.6",
+    "title": "Rögzített chatek, ütemezés és Nemotron Hybrid",
+    "changes": [
+      "Az oldalsávban rögzítheted a fontos beszélgetéseket. A rögzített chatek a lista tetején maradnak.",
+      "A válaszok, elkészült videók és emlékeztetők felül értesítést kapnak. Az értesítés megnyitja a kapcsolódó nézetet.",
+      "Az Ütemezés menüben egyszeri, napi vagy heti emlékeztetőket és chatfeladatokat állíthatsz be. A chatből mentésre előkészített piszkozatot is kérhetsz.",
+      "A Nemotron Hybrid általános feladatokhoz az Ultrát, kép- és szövegelemzéshez a Super VL-t választja."
+    ]
+  },
+  {
     "version": "1.3.5",
     "title": "Munkakörnyezet és artifactgaléria",
     "changes": [

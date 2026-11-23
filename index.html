@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="appearance.css">
 <link rel="stylesheet" href="workspace.css">
+<link rel="stylesheet" href="schedules.css">
 </head>
 <body>
 <div class="wallpaper" id="wallpaper" aria-hidden="true"><img id="customWallpaper" alt=""></div>
@@ -30,7 +31,7 @@
       <button class="btn" id="charactersBtn">Karakterek</button>
       <button class="btn" id="voiceSettings">Hangasszisztens</button>
     </div>
-    <div class="side-actions workspace-actions"><button class="btn" id="artifactsBtn">Artifactok <span id="artifactCount"></span></button></div>
+    <div class="side-actions workspace-actions"><button class="btn" id="artifactsBtn">Artifactok <span id="artifactCount"></span></button><button class="btn" id="schedulesBtn" type="button" aria-haspopup="dialog">Ütemezés</button></div>
     <div class="search">
       <svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <input id="search" placeholder="Keresés a csevegésekben…" aria-label="Keresés a csevegésekben">
@@ -265,6 +266,26 @@
   </div>
   </div>
 </dialog>
+<dialog id="schedulesDialog" class="studio" aria-labelledby="schedulesTitle">
+  <div class="studio-head"><div><h2 id="schedulesTitle">Ütemezés</h2><p>Emlékeztetők és automatikusan futó chatfeladatok</p></div><button class="dismiss" id="closeSchedules" type="button" aria-label="Bezárás">×</button></div>
+  <div class="schedules-body">
+    <section aria-labelledby="scheduleListTitle"><h3 id="scheduleListTitle">Mentett ütemezések</h3><div id="scheduleList"></div></section>
+    <form id="scheduleForm">
+      <h3 id="scheduleFormTitle">Új ütemezés</h3>
+      <label>Típus<select id="scheduleKind"><option value="reminder">Emlékeztető</option><option value="task">Chatfeladat</option></select></label>
+      <label>Cím<input id="scheduleName" maxlength="100" required></label>
+      <div class="schedule-fields">
+        <label>Első időpont<input id="scheduleAt" type="datetime-local" required></label>
+        <label>Ismétlés<select id="scheduleRepeat"><option value="once">Egyszer</option><option value="daily">Naponta</option><option value="weekly">Hetente</option></select></label>
+      </div>
+      <label id="scheduleTargetLabel" hidden>Csevegés<select id="scheduleTarget"></select><small>A feladat a csevegés aktuális modelljével fut.</small></label>
+      <label><span id="scheduleTextLabel">Megjegyzés</span><textarea id="scheduleText" rows="4" maxlength="12000"></textarea></label>
+      <p id="scheduleFeedback" role="status"></p>
+      <div class="schedule-actions"><button class="btn" type="button" id="newSchedule">Új ütemezés</button><button class="btn go" type="submit">Mentés</button></div>
+      <small>A Neutron futása alatt ütemez. A kikapcsolt állapotban esedékes feladatot a következő indításkor veszi sorra.</small>
+    </form>
+  </div>
+</dialog>
 <dialog id="artifactEditor" class="studio" aria-labelledby="artifactEditorTitle">
   <div class="studio-head"><h2 id="artifactEditorTitle">Új artifact</h2><button class="dismiss" id="closeArtifactEditor" aria-label="Bezárás" type="button">×</button></div>
   <form id="artifactEditorForm" class="workspace-body">
@@ -386,6 +407,7 @@
   <div class="release-footer"><button class="btn go" id="closeRelease">Rendben</button></div>
 </dialog>
 <div class="toasts" id="toasts"></div>
+<div class="neutron-notices" id="neutronNotices" aria-live="polite" aria-label="Neutron-értesítések"></div>
 
 <script src="node_modules/marked/lib/marked.umd.js"></script>
 <script src="node_modules/dompurify/dist/purify.min.js"></script>
@@ -395,8 +417,10 @@
 <script src="workspace-ui.js"></script>
 <script src="hungarian.js"></script>
 <script src="video-intent.js"></script>
+<script src="nemotron-hybrid.js"></script>
 <script src="renderer.js"></script>
 <script src="workspace-panels.js"></script>
+<script src="schedules-ui.js"></script>
 <script src="video-ui.js"></script>
 <script src="settings.js"></script>
 <script src="claude-import-ui.js"></script>

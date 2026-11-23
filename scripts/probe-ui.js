@@ -247,5 +247,31 @@ async function connect() {
     })()`);
     if(!result) throw Error("Packaged appearance, notes or settings did not work");
     await screenshot("notes");
+    await evaluate(`(async()=>{
+      document.querySelector('#releaseDialog').close();
+      document.querySelector('#settingsDialog').close();
+      newChat();
+      chat.title='Rögzíthető próbachat';
+      globalThis.probePinnedId=chat.id;
+      await save(chat);
+      newChat();
+      chat.title='Frissebb próbachat';
+      await save(chat);
+      await refreshList();
+      const row=[...document.querySelectorAll('.chat-item')].find(item=>item.textContent.includes('Rögzíthető próbachat'));
+      row.querySelector('.pin-chat').click();
+    })()`);
+    await wait("document.querySelector('.chat-item')?.textContent.includes('Rögzíthető próbachat') && document.querySelector('.pin-chat').getAttribute('aria-pressed')==='true'");
+    if(!await evaluate("(async()=>!!(await N.chats.load(probePinnedId)).pinnedAt)()"))throw Error("Pin did not persist");
+    await evaluate(`(async()=>{
+      document.querySelector('#schedulesBtn').click();
+      await N.schedules.save({kind:'reminder',title:'Próbaemlékeztető',text:'Ütemezett értesítés',nextAt:Date.now()+700,repeat:'once'});
+      document.querySelector('#closeSchedules').click();
+    })()`);
+    await wait("document.querySelector('.notice-content')?.textContent.includes('Próbaemlékeztető')");
+    await evaluate("document.querySelector('.notice-content').click()");
+    await wait("document.querySelector('#schedulesDialog').open && document.querySelector('#scheduleList').textContent.includes('Befejezve')");
+    await screenshot("schedules");
+    await evaluate("document.querySelector('#closeSchedules').click()");
   } finally { ws.close(); }
 })().catch(err=>{console.error(err);process.exit(1);});

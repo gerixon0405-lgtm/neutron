@@ -69,6 +69,8 @@ jobs:
         run: node scripts/test-account-usage.js
       - name: Test workspace context and artifact catalog
         run: node scripts/test-workspace-panels.js
+      - name: Test durable schedules and hybrid routing
+        run: node scripts/test-schedules-hybrid.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

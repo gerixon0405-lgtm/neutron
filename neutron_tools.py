@@ -92,6 +92,20 @@ def artifact_read(name):
     return p.read_text()
 
 
+@tool("Prepare an explicitly requested reminder or scheduled chat task for review in Neutron. The user has to save the draft. Use the user's local date and time (ISO YYYY-MM-DDTHH:MM), or include its timezone offset if specified.", kind=("reminder","task"), title=str, text=str, when=str, repeat=("once","daily","weekly"))
+def schedule_draft(kind, title, text, when, repeat="once"):
+    from datetime import datetime
+    if kind not in ("reminder","task") or repeat not in ("once","daily","weekly"):
+        raise ValueError("Érvénytelen ütemezéstípus vagy ismétlés.")
+    title, text = title.strip(), text.strip()
+    if not title or len(title)>100 or len(text)>12000 or (kind=="task" and not text):
+        raise ValueError("Adj meg egy címet és a feladat szövegét.")
+    if "T" not in when:
+        raise ValueError("Adj meg dátumot és időpontot is.")
+    datetime.fromisoformat(when.replace("Z","+00:00"))
+    return {"state":"schedule_draft","kind":kind,"title":title,"text":text,"when":when,"repeat":repeat}
+
+
 @tool("Publish the current project's existing dist or build directory as a downloadable ZIP artifact. Run the project's build first. Includes compiled files and their relative paths.", folder=("dist","build"), name=str)
 def artifact_publish(folder, name):
     if folder not in ("dist", "build"):
