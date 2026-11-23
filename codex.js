@@ -29,7 +29,7 @@ function options(chat) {
   return args;
 }
 
-function run(chat, text, notify, done, jpeg=null) {
+function run(chat, text, notify, done, jpeg=null, images=[]) {
   const args = ["exec", ...options(chat), "--json", "--skip-git-repo-check"];
   if (chat.codexThread) args.push("resume", chat.codexThread);
   let imageDir;
@@ -37,13 +37,15 @@ function run(chat, text, notify, done, jpeg=null) {
     imageDir=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-screen-"));
     const file=path.join(imageDir,"screen.jpg");fs.writeFileSync(file,jpeg,{mode:0o600});args.push("--image",file);
   }
-  args.push("-");
+  for (const image of images) args.push("--image",image);
+  args.push("--", "-");
   const child = spawn(binary(), args, { cwd: chat.cwd, stdio: ["pipe", "pipe", "pipe"] });
   if(imageDir) child.once("close",()=>fs.rmSync(imageDir,{recursive:true,force:true}));
   let problem = "", diagnostics = "", completed = false;
   readline.createInterface({ input: child.stdout }).on("line", line => {
     let e;
     try { e = JSON.parse(line); } catch { return; }
+    if (["item.started","item.completed"].includes(e.type) && /command_execution|tool_call|file_change/.test(e.item?.type || "")) notify({kind:"effects"});
     if (e.type === "thread.started") notify({ kind: "thread", id: e.thread_id });
     if (e.type === "item.completed" && e.item?.type === "agent_message") notify({ kind: "message", text: e.item.text });
     if (e.type === "item.completed" && e.item?.type === "command_execution")

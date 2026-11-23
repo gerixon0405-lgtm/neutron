@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.2.1",
+    "title": "Mellékletek, Spotify és automatikus újrapróbálás",
+    "changes": [
+      "Fájlokat csatolhatsz a gemkapoccsal vagy az ablakba húzva. A mellékletek a chatüzenetben is láthatók.",
+      "Az effort vezérlő megmutatja az aktuális modellt és fokozatot, egy gombbal pedig visszaállítható Auto értékre.",
+      "Spotify-hozzáféréssel dalt távolíthatsz el egy playlistből, átnevezheted vagy eltávolíthatod a listát a könyvtáradból.",
+      "API-korlátnál a Neutron egy perc múlva újrapróbálja a még meg nem kezdett műveleteket. Tíz egymást követő korlátozás után megáll."
+    ]
+  },
+  {
     "version": "1.2.0",
     "title": "Személyre szabható munkatér",
     "changes": [

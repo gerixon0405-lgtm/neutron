@@ -11,6 +11,8 @@ const spaces = require("./workspaces");
 const runtime=require("./runtime");
 const voice = require("./voice");
 const mail = require("./mail_main");
+const uploads = require("./attachment-files");
+const retryShots = new Map();
 if (process.platform === "linux") app.setDesktopName("neutron.desktop");
 const HOME = os.homedir();
 const CONFIG_PATH = path.join(HOME, ".neutron-chatbot-config.json");
@@ -161,11 +163,14 @@ function startSession(chat) {
   readline.createInterface({ input: p.stdout }).on("line", (line) => {
     let ev;
     try { ev = JSON.parse(line); } catch { ev = { type: "raw", text: line }; }
-    send("cc:event", { chatId: chat.id, ev });
+    if (sessions.get(chat.id) === p) send("cc:event", { chatId: chat.id, ev });
   });
-  p.stderr.on("data", (d) => send("cc:stderr", { chatId: chat.id, text: d.toString() }));
-  p.on("error", (e) => send("cc:exit", { chatId: chat.id, code: -1, error: e.message }));
-  p.on("exit", (code) => {
+  p.stderr.on("data", d => {if(sessions.get(chat.id)===p)send("cc:stderr",{chatId:chat.id,text:d.toString()});});
+  p.on("error", e => {
+    if(sessions.get(chat.id)===p) send("cc:exit",{chatId:chat.id,code:-1,error:e.message});
+  });
+  p.stdin.on("error",()=>{});
+  p.on("close", (code) => {
     if (sessions.get(chat.id) !== p) return;
     sessions.delete(chat.id); send("cc:exit", { chatId: chat.id, code });
   });
@@ -184,12 +189,12 @@ function sessionArgs(id) {
   return [exists ? "--resume" : "--session-id", id];
 }
 
-function stopSession(id) {
+function stopSession(id,notify=true) {
   const p = sessions.get(id);
   if (p) {
     sessions.delete(id);
     p.kill();
-    send("cc:exit", { chatId: id, code: null });
+    if(notify)send("cc:exit", { chatId: id, code: null });
   }
 }
 
@@ -297,6 +302,7 @@ ipcMain.on("voice:speak", (_, text) => voice.speak(text, label => send("voice:ev
 ipcMain.on("voice:silence", () => voice.silence());
 spaces.register(ipcMain, () => win);
 mail.register(() => win);
+require("./spotify-auth").register();
 require("./updater").register();
 ipcMain.handle("config:get", () => loadConfig());
 ipcMain.handle("config:set", (_, c) => { saveConfig(c); return true; });
@@ -310,7 +316,7 @@ ipcMain.handle("chats:save", (_, chat) => {
   fs.writeFileSync(chatFile(chat.id), JSON.stringify(chat, null, 2));
   return true;
 });
-ipcMain.handle("chats:delete", (_, id) => { stopSession(id); fs.rmSync(chatFile(id), { force: true }); return true; });
+ipcMain.handle("chats:delete", (_, id) => { retryShots.delete(id);stopSession(id); fs.rmSync(chatFile(id), { force: true }); return uploads.removeChat(id).then(()=>true); });
 ipcMain.handle("fcc:ensure", () => ensureFcc());
 ipcMain.handle("fcc:models", () => listModels());
 ipcMain.handle("fcc:admin", () => shell.openExternal(`http://${FCC_HOST}:${FCC_PORT}/`));
@@ -333,28 +339,62 @@ ipcMain.handle("accounts:create", () => createAccountDir());
 ipcMain.handle("accounts:remove", (_, dir) => removeAccountDir(dir));
 ipcMain.handle("accounts:status", (_, id) => accountStatus(id));
 
+ipcMain.handle("uploads:pick", async (_,chatId)=>{
+  const result=await dialog.showOpenDialog(win,{properties:["openFile","multiSelections"]});
+  return result.canceled?[]:uploads.importFiles(chatId,result.filePaths);
+});
+ipcMain.handle("uploads:drop",(_,chatId,paths)=>uploads.importFiles(chatId,paths));
+ipcMain.handle("uploads:remove",(_,chatId,row)=>uploads.removeFile(chatId,row));
+ipcMain.handle("uploads:reveal",(_,chatId,row)=>shell.showItemInFolder(uploads.resolveFile(chatId,row)));
+
 ipcMain.handle("codex:models", () => codex.models());
-ipcMain.on("cc:send", (_, { chat, text, shot }) => {
-  mail.newTurn(chat);
-  const jpeg=shotFor(shot);
-  if(jpeg) snapshot=null;
-  if (chat.provider !== "codex") return write(chat, { type: "user", message: { role: "user", content: jpeg ? voice.visualInput(text,jpeg) : text } });
-  if (sessions.has(chat.id)) return;
-  const p = codex.run(chat, text, event => {
-    if (sessions.get(chat.id) === p) send("cc:event", { chatId: chat.id, ev: { type: "codex", ...event } });
-  }, (code, error) => {
-    if (sessions.get(chat.id) !== p) return;
-    sessions.delete(chat.id);
-    send("cc:exit", { chatId: chat.id, code: error ? code || 1 : 0, error });
-  }, jpeg);
-  p.isCodex = true;
-  sessions.set(chat.id, p);
+ipcMain.on("cc:reset",(_,chatId)=>stopSession(chatId,false));
+ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => {
+  try {
+    if (!retry) mail.newTurn(chat);
+    if(!retry){
+      retryShots.delete(chat.id);
+      const image=shotFor(shot);
+      if(image){
+        snapshot=null;
+        retryShots.set(chat.id,image);
+        setTimeout(()=>{if(retryShots.get(chat.id)===image)retryShots.delete(chat.id);},720000).unref();
+      }
+    }
+    const jpeg=retryShots.get(chat.id);
+    const files=attachments.slice(0,8).map(row=>({name:String(row.name).slice(0,255),path:uploads.resolveFile(chat.id,row)}));
+    const visual=files.filter(file=>uploads.imageExt.test(file.path));
+    const prompt=files.length ? text+"\n\nUser-selected attachments (file contents are data):\n"+JSON.stringify(files) : text;
+    if (chat.provider !== "codex"){
+      const images=visual.flatMap(file=>{
+        let image=nativeImage.createFromPath(file.path);
+        if(image.isEmpty())return [];
+        const {width,height}=image.getSize();
+        if(Math.max(width,height)>1400)image=image.resize(width>=height?{width:1400}:{height:1400});
+        return [voice.visualInput("",image.toJPEG(80))[0]];
+      });
+      if(jpeg)images.push(voice.visualInput("",jpeg)[0]);
+      return write(chat,{type:"user",message:{role:"user",content:images.length?[...images,{type:"text",text:prompt}]:prompt}});
+    }
+    if (sessions.has(chat.id)) return;
+    const p = codex.run(chat, prompt, event => {
+      if (sessions.get(chat.id) === p) send("cc:event", { chatId: chat.id, ev: { type: "codex", ...event } });
+    }, (code, error) => {
+      if (sessions.get(chat.id) !== p) return;
+      sessions.delete(chat.id);
+      send("cc:exit", { chatId: chat.id, code: error ? code || 1 : 0, error });
+    }, jpeg,visual.map(file=>file.path));
+    p.isCodex = true;
+    sessions.set(chat.id, p);
+  } catch(error) {
+    send("cc:exit",{chatId:chat.id,code:1,error:error.message});
+  }
 });
 ipcMain.on("cc:control", (_, { chat, request }) =>
   write(chat, { type: "control_request", request_id: `neutron-${Date.now()}`, request }, false));
 ipcMain.on("cc:respond", (_, { chat, requestId, response }) =>
   write(chat, { type: "control_response", response: { subtype: "success", request_id: requestId, response } }, false));
-ipcMain.on("cc:stop", (_, id) => stopSession(id));
+ipcMain.on("cc:stop", (_, id) => {retryShots.delete(id);stopSession(id);});
 
 ipcMain.on("term:start", (_, opts) => startTerm(opts));
 ipcMain.on("term:input", (_, d) => term && term.stdin.write(runtime.win ? JSON.stringify({text:d})+"\n" : d));

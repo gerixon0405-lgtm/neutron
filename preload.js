@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 const on = (ch) => (fn) => {
   const h = (_, d) => fn(d);
@@ -8,6 +8,12 @@ const on = (ch) => (fn) => {
 
 if (location.pathname.endsWith("/voice-hud.html")) contextBridge.exposeInMainWorld("onVoiceState", on("voice:hud-state"));
 else if (process.isMainFrame && location.protocol === "file:") contextBridge.exposeInMainWorld("neutron", {
+  uploads:{
+    pick:id=>ipcRenderer.invoke("uploads:pick",id),
+    drop:(id,files)=>ipcRenderer.invoke("uploads:drop",id,files.map(file=>webUtils.getPathForFile(file))),
+    remove:(id,row)=>ipcRenderer.invoke("uploads:remove",id,row),
+    reveal:(id,row)=>ipcRenderer.invoke("uploads:reveal",id,row),
+  },
   projects: { open: id => ipcRenderer.invoke("projects:open",id), list: () => ipcRenderer.invoke("projects:list"), create: name => ipcRenderer.invoke("projects:create", name) },
   artifacts: {
     list: scope => ipcRenderer.invoke("artifacts:list", scope),
@@ -18,6 +24,11 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     export: (scope,name) => ipcRenderer.invoke("artifacts:export", scope,name),
   },
   updates: { notes:()=>ipcRenderer.invoke("update:notes"), status:()=>ipcRenderer.invoke("update:status"),check:()=>ipcRenderer.invoke("update:check") },
+  spotify: {
+    status:()=>ipcRenderer.invoke("spotify:status"),
+    connect:id=>ipcRenderer.invoke("spotify:connect",id),
+    disconnect:()=>ipcRenderer.invoke("spotify:disconnect")
+  },
   mail: {
     status: batch=>ipcRenderer.invoke("mail:status",batch || ""), cancel: id=>ipcRenderer.invoke("mail:cancel",id),
     smtp: (email,password)=>ipcRenderer.invoke("mail:smtp",email,password), oauth: ()=>ipcRenderer.invoke("mail:oauth"),
@@ -58,7 +69,8 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
   },
   home: () => ipcRenderer.invoke("home"),
   cc: {
-    send: (chat, text, shot) => ipcRenderer.send("cc:send", { chat, text, shot }),
+    send: (chat, text, shot, attachments, retry) => ipcRenderer.send("cc:send", { chat, text, shot, attachments, retry }),
+    reset: id=>ipcRenderer.send("cc:reset",id),
     control: (chat, request) => ipcRenderer.send("cc:control", { chat, request }),
     respond: (chat, requestId, response) => ipcRenderer.send("cc:respond", { chat, requestId, response }),
     stop: (id) => ipcRenderer.send("cc:stop", id),

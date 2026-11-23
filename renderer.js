@@ -17,6 +17,7 @@ const FALLBACK_SLASH = ["compact", "clear", "context", "cost", "init", "review",
 
 let cfg = {}, home = "", models = [], chats = [], chat = null, view = "chat";
 const open = new Map();     // chatId -> chat object (loaded)
+const pendingFiles = new Map();
 const live = new Map();     // chatId -> { idx: Map(index->block), streamed: Set(msgId), stderr: "" }
 const blockEls = new WeakMap();
 let slashMeta = { slash: [], term: [] };
@@ -110,6 +111,8 @@ function renderList() {
     el.querySelector(".del").onclick = async (e) => {
       e.stopPropagation();
       if (!confirm(`Törlöd ezt a csevegést?\n„${c.title}”`)) return;
+      clearTimeout(live.get(c.id)?.retryTimer);
+      pendingFiles.delete(c.id);
       await N.chats.delete(c.id);
       open.delete(c.id); live.delete(c.id);
       if (chat && chat.id === c.id) chat = null;
@@ -178,6 +181,7 @@ function defaultModel() {
 
 function renderChat() {
   renderQuickPermission();
+  renderComposerFiles();
   updateArtifacts();
   const th = $("#thread");
   th.innerHTML = "";
@@ -220,6 +224,14 @@ function itemEl(it) {
   if (it.role === "user") {
     wrap.className = "msg user";
     wrap.innerHTML = `<div class="bubble${it.wake ? " wake" : ""}">${esc(it.text)}</div>`;
+    const owner=chat?.id;
+    for(const row of it.files || []){
+      const file=document.createElement("button");
+      file.className="sent-file";file.type="button";file.textContent=row.name;
+      file.title="Helyi másolat megjelenítése";
+      file.onclick=()=>N.uploads.reveal(owner,row).catch(error=>toast(error.message,true));
+      wrap.firstElementChild.append(file);
+    }
     return wrap;
   }
   wrap.className = "msg assistant";
@@ -250,6 +262,8 @@ function blockEl(b) {
     el = document.createElement("div");
     el.className = "perm";
     el.innerHTML = `<h4>🔐 Engedélyt kér: <code></code></h4><pre></pre><div class="row"></div>`;
+  } else if (b.type === "status") {
+    el = document.createElement("div"); el.className="retry-status"; el.textContent=b.text; el.setAttribute("role","status");
   } else if (b.type === "error") {
     el = document.createElement("div");
     el.className = "error-box";
@@ -435,7 +449,7 @@ function setBusyUi() {
   $("#composer").classList.toggle("busy", busy);
   $("#send").title = busy ? "Leállítás (Esc)" : "Küldés (Enter)";
   $("#modelChip").disabled = !!busy;
-  $("#effortSlider").disabled = !!busy || view === "term";
+  $("#effortSlider").disabled = $("#resetEffort").disabled = !!busy || view === "term";
   $("#dirChip").disabled = !!(chat && (chat.items.length || chat.projectId));
   renderList();
 }
@@ -482,25 +496,81 @@ function hasChatProvider(c) {
   return false;
 }
 
+function renderComposerFiles(){
+  const tray=$("#composerFiles"), owner=chat?.id, rows=pendingFiles.get(owner) || [];
+  tray.replaceChildren();tray.hidden=!rows.length;
+  rows.forEach(row=>{
+    const chip=document.createElement("div");chip.className="file-chip";
+    const name=document.createElement("span");name.textContent=row.name;name.title=row.name;
+    const remove=document.createElement("button");remove.type="button";remove.textContent="×";
+    remove.setAttribute("aria-label",row.name+" eltávolítása");
+    remove.onclick=()=>{
+      pendingFiles.set(owner,(pendingFiles.get(owner)||[]).filter(file=>file.id!==row.id));
+      renderComposerFiles();
+      N.uploads.remove(owner,row).catch(error=>toast(error.message,true));
+    };
+    chip.append(name,remove);tray.append(chip);
+  });
+}
+
+async function addComposerFiles(load) {
+  const owner=chat?.id;
+  if(!owner)return;
+  let added;
+  try {
+    added=await load(owner);
+    if(!open.has(owner)){
+      await Promise.allSettled(added.map(row=>N.uploads.remove(owner,row)));
+      return;
+    }
+    const existing=pendingFiles.get(owner)||[];
+    if(existing.length+added.length>8){
+      await Promise.allSettled(added.map(row=>N.uploads.remove(owner,row)));
+      return toast("Legfeljebb 8 fájlt csatolhatsz üzenetenként.",true);
+    }
+    pendingFiles.set(owner,[...existing,...added]);
+    if(chat?.id===owner)renderComposerFiles();
+  } catch(error){toast(error.message,true);}
+}
+$("#attachFiles").onclick=()=>addComposerFiles(id=>N.uploads.pick(id));
+const chatDrop=$("#chatView");
+chatDrop.addEventListener("dragover",event=>{
+  if(!event.dataTransfer.types.includes("Files"))return;
+  event.preventDefault();event.dataTransfer.dropEffect="copy";
+  $("#composer").classList.add("file-drop");
+});
+chatDrop.addEventListener("dragleave",event=>{
+  if(!chatDrop.contains(event.relatedTarget))$("#composer").classList.remove("file-drop");
+});
+chatDrop.addEventListener("drop",event=>{
+  $("#composer").classList.remove("file-drop");
+  const files=Array.from(event.dataTransfer.files);
+  if(!files.length)return;
+  event.preventDefault();
+  addComposerFiles(id=>N.uploads.drop(id,files));
+});
+window.addEventListener("dragover",event=>{if(event.dataTransfer.types.includes("Files"))event.preventDefault();});
+window.addEventListener("drop",event=>{if(event.dataTransfer.types.includes("Files"))event.preventDefault();});
+
 function send() {
   const box = $("#input");
   const text = box.value.trim();
-  if (!text || !chat) return;
+  if (!chat || (!text && !pendingFiles.get(chat.id)?.length)) return;
   if (live.has(chat.id)) return toast("Várd meg a választ, vagy állítsd le (Esc).");
   closePop();
   const cmd = text.startsWith("/") ? text.slice(1).split(/\s/)[0] : null;
   const meta = slashMeta.term.length ? slashMeta : cfg.slashCache || slashMeta;
-  if (chat.provider !== "codex" && cmd && meta.term?.includes(cmd) && !meta.slash?.includes(cmd)) {
+  if (chat.provider !== "codex" && !pendingFiles.get(chat.id)?.length && cmd && meta.term?.includes(cmd) && !meta.slash?.includes(cmd)) {
     box.value = ""; autoGrow();
     toast(`A /${cmd} interaktív parancs, a Terminál fülön nyílik meg.`);
     return setView("term", () => startTerm([text]));
   }
   box.value = ""; autoGrow();
-  submit(chat, text);
+  submit(chat, text || "Nézd meg a csatolt fájlokat.",false,null,pendingFiles.get(chat.id)||[]);
 }
 
-async function submit(c, text, wake = false, shot = null) {
-  const optimize = !wake && await N.maintenance.matches(text);
+async function submit(c, text, wake = false, shot = null, files=[]) {
+  const optimize = !wake && !files.length && await N.maintenance.matches(text);
   if (live.has(c.id) || (!optimize && !hasChatProvider(c))) return;
   const active = chat && c.id === chat.id;
   if (!c.items.length) {
@@ -511,7 +581,11 @@ async function submit(c, text, wake = false, shot = null) {
     if (!c.projectId) { cfg.lastCwd = c.cwd; N.config.set(cfg); }
   }
   if (!wake) window.dispatchEvent(new Event("neutron-send"));
-  const u = { role: "user", text, wake };
+  if(files.length){
+    pendingFiles.delete(c.id);
+    if(active)renderComposerFiles();
+  }
+  const u = { role: "user", text, wake, ...(files.length?{files}: {}) };
   c.items.push(u);
   if (active) $("#thread").append(itemEl(u));
   live.set(c.id, { idx: new Map(), streamed: new Set(), stderr: "" });
@@ -536,26 +610,71 @@ async function submit(c, text, wake = false, shot = null) {
   const actual = { ...c };
   const effortKey = c.provider === "codex" ? "codexEffort" : "effort";
   if (!effortLevels(c).includes(actual[effortKey])) actual[effortKey] = "";
-  N.cc.send(actual, text, shot);
+  const state=live.get(c.id);
+  state.request={actual,text,shot,files};
+  state.rateFailures=0;
+  N.cc.send(actual, text, shot, files);
   save(c).then(refreshList);
 }
 
 function stop() {
   if (!chat || !live.has(chat.id)) return;
   const c = chat;
-  if (live.get(c.id).maintenance) return toast("A futó Windows-művelet állapota a Windows ablakában látható.");
+  const state=live.get(c.id);
+  if(state.retryTimer) {
+    clearTimeout(state.retryTimer);
+    const it=currentTurn(c);
+    it.meta="Leállítva";
+    finishTurn(c,it);
+    return;
+  }
+  if (state.maintenance) return toast("A futó Windows-művelet állapota a Windows ablakában látható.");
   if (c.provider === "codex") return N.cc.stop(c.id);
   N.cc.control(c, { subtype: "interrupt" });
-  setTimeout(() => { if (live.has(c.id)) { N.cc.stop(c.id); } }, 4000);
+  setTimeout(() => { if (live.get(c.id)===state && !state.retryTimer) N.cc.stop(c.id); }, 4000);
 }
 
 // ---------- protocol ----------
+function retryRateLimit(c, st, it, error) {
+  if(!st.request || !(st.rateError || isRateLimit(error)))return false;
+  st.rateFailures++;
+  const decision=rateRetryDecision(st.rateFailures,st.effects || it.blocks.some(b=>b.type==="tool" || b.type==="perm"));
+  if(decision!=="wait"){
+    appendBlock(c,it,{type:"error",text:decision==="limit"?
+      "A szolgáltató egymás után tízszer túl sok kérést jelzett. Az újrapróbálás leállt.":
+      "A szolgáltató túl sok kérést jelzett. A már megkezdett műveletek miatt a Neutron nem ismétli meg automatikusan a teljes kérést."});
+    it.meta="API-korlát";
+    finishTurn(c,it);
+    return true;
+  }
+  N.cc.reset(c.id);
+  it.blocks=[];
+  appendBlock(c,it,{type:"status",text:`A szolgáltató túl sok kérést jelzett (${st.rateFailures}/10). Újrapróbálás 1 perc múlva…`});
+  if(chat?.id===c.id)renderChat();
+  st.retryTimer=setTimeout(()=>{
+    if(live.get(c.id)!==st)return;
+    st.retryTimer=null;
+    st.rateError=false;
+    st.stderr="";
+    st.idx.clear();
+    st.streamed.clear();
+    it.blocks=[];
+    if(chat?.id===c.id)renderChat();
+    const {actual,text,shot,files}=st.request;
+    N.cc.send({...actual,sessionId:c.sessionId,codexThread:c.codexThread},text,shot,files,true);
+  }, RATE_RETRY_DELAY);
+  return true;
+}
+
 N.cc.onEvent(({ chatId, ev }) => {
   const c = open.get(chatId);
   if (!c) return;
   let st = live.get(chatId);
+  if(st?.retryTimer)return;
+  if(st && ev.error && isRateLimit(ev.error))st.rateError=true;
   if (ev.type === "codex") {
     if (!st) return;
+    if (ev.kind === "effects") st.effects=true;
     if (ev.kind === "thread") { c.codexThread = ev.id; save(c); }
     if (ev.kind==="files") { const it=currentTurn(c);it.changedPaths=[...(it.changedPaths || []),...ev.paths]; }
     if (ev.kind === "output") receiveOutput(c,currentTurn(c),ev.tool,ev.input,ev.body);
@@ -656,6 +775,8 @@ N.cc.onEvent(({ chatId, ev }) => {
 
   if (ev.type === "result") {
     const it = currentTurn(c);
+    c.sessionId = ev.session_id || c.sessionId;
+    if(ev.is_error && retryRateLimit(c,st,it,[ev.result,ev.errors,st.stderr,...it.blocks.filter(b=>b.type==="text").map(b=>b.text)].filter(Boolean).join("\n")))return;
     if (ev.is_error && ev.result) appendBlock(c, it, { type: "error", text: ev.result });
     else if (!it.blocks.some((b) => b.type === "text") && typeof ev.result === "string" && ev.result.trim())
       appendBlock(c, it, { type: "text", text: ev.result });
@@ -710,9 +831,10 @@ N.cc.onStderr(({ chatId, text }) => {
 
 N.cc.onExit(({ chatId, code, error }) => {
   const c = open.get(chatId), st = live.get(chatId);
-  if (!c || !st) return;
+  if (!c || !st || st.retryTimer) return;
   const it = currentTurn(c);
   const msg = error || st.stderr.split("\n").filter((l) => l && !l.includes("unrecognized_model")).slice(-8).join("\n");
+  if (code !== 0 && code !== null && retryRateLimit(c,st,it,msg))return;
   if (code !== 0 && code !== null) appendBlock(c, it, { type: "error", text: `${c.provider === "codex" ? "A Codex" : "A Claude CLI"} kilépett (${code}).\n${msg}` });
   else if (code === null) it.meta = "Leállítva";
   finishTurn(c, it);
@@ -864,14 +986,19 @@ function renderEffort() {
   $("#effortBar").hidden = levels.length < 2;
   const slider = $("#effortSlider");
   slider.style.setProperty("--steps",Math.max(1,levels.length-1));
-  slider.max = levels.length - 1; slider.value = index; slider.disabled = live.has(chat.id) || view === "term";
+  slider.max = levels.length - 1; slider.value = index;
+  $("#resetEffort").disabled=slider.disabled = live.has(chat.id) || view === "term";
+  $("#effortModel").textContent=shortModel(chat.model || (chat.provider==="codex"?defaultCodex:"") || "Alapmodell");
+  const ticks=$("#effortTicks");
+  if(ticks.childElementCount!==levels.length)ticks.replaceChildren(...levels.map(()=>document.createElement("i")));
   const label = () => {
     const value = EFFORTS[levels[slider.value]] || levels[slider.value];
     $("#effortName").textContent = value; slider.setAttribute("aria-valuetext", value);
     slider.style.setProperty("--fill", (100 * Number(slider.value) / Math.max(1,levels.length - 1)) + "%");
   };
   label(); slider.oninput = label;
-  slider.onchange = () => { chat[key] = levels[slider.value]; restartSession(chat); save(chat); };
+  slider.onchange = () => { chat[key] = levels[slider.value]; label(); restartSession(chat); save(chat); };
+  $("#resetEffort").onclick=()=>{slider.value=0;slider.onchange();};
 }
 let catalogRequest, lastCatalog;
 function refreshModels() {

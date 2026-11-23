@@ -39,18 +39,20 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance
+          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./build/python/python.exe scripts/smoke_windows.py
       - name: Test Linux app helpers
         if: runner.os == 'Linux'
-        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance
+        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api
       - name: Test FCC model catalog
         run: node scripts/test-fcc-catalog.js
       - name: Test direct Windows maintenance command
         run: node scripts/test-maintenance-command.js
       - name: Verify bundled release notes
         run: node scripts/release-notes.js
+      - name: Test chat attachments and rate limit policy
+        run: node scripts/test-chat-input.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

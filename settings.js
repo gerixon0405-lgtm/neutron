@@ -123,3 +123,25 @@ async function refreshUpdate(){
   $("#updateMessage").textContent=info.message;$("#updateCheck").hidden=!info.enabled;
 }
 $("#updateCheck").onclick=async()=>{await N.updates.check();await refreshUpdate();};
+
+
+function showSpotifyAccount(state){
+  $("#spotifyConnect").hidden=state.connected;
+  $("#spotifyDisconnect").hidden=!state.connected;
+  $("#spotifyConnection").textContent=state.connected?"A Spotify playlist-hozzáférése aktív.":"A playlist-szerkesztéshez engedélyezd a Spotify-fiókodat.";
+}
+$('[data-settings="connections"]').addEventListener("click",()=>N.spotify.status().then(showSpotifyAccount).catch(error=>{
+  $("#spotifyConnection").textContent=error.message;
+}));
+$("#spotifyConnect").onsubmit=async event=>{
+  event.preventDefault();
+  const button=event.submitter;button.disabled=true;
+  $("#spotifyConnection").textContent="Spotify-jóváhagyásra várunk a böngészőben…";
+  try { showSpotifyAccount(await N.spotify.connect($("#spotifyClientId").value)); }
+  catch(error){ $("#spotifyConnection").textContent=error.message; }
+  finally { button.disabled=false; }
+};
+$("#spotifyDisconnect").onclick=async()=>{
+  try{showSpotifyAccount(await N.spotify.disconnect());}
+  catch(error){$("#spotifyConnection").textContent=error.message;}
+};

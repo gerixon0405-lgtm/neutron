@@ -74,7 +74,11 @@
             </div>
           </div>
           <div class="composer" id="composer">
+            <div id="composerFiles" hidden aria-label="Csatolt fájlok"></div>
             <div class="composer-inner">
+              <button type="button" class="icon-btn" id="attachFiles" aria-label="Fájlok csatolása" title="Fájlok csatolása">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 12.7 14.5 6a3.5 3.5 0 0 1 5 5l-8.8 9a5 5 0 0 1-7-7L12 4.5"/><path d="m7 16 8-8"/></svg>
+              </button>
               <textarea id="input" rows="1" placeholder="Írj üzenetet, vagy / a parancsokhoz…" aria-label="Üzenet"></textarea>
               <button class="send" id="send" title="Küldés (Enter)" aria-label="Küldés">
                 <svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 15V3M4 8l5-5 5 5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -82,7 +86,11 @@
               </button>
             </div>
           </div>
-          <div class="composer-tools"><button class="chip" id="modelChip" title="Modell"><span class="dot"></span><span id="modelName">Modell…</span></button><label id="effortBar" hidden><span>Effort <b id="effortName"></b></span><input id="effortSlider" type="range" min="0" step="1" aria-label="Reasoning effort"></label></div>
+          <div class="composer-tools"><button class="chip" id="modelChip" title="Modell"><span class="dot"></span><span id="modelName">Modell…</span></button><div id="effortBar" hidden>
+            <div class="effort-head"><label for="effortSlider" title="Reasoning effort">ϟ</label><div><b id="effortName"></b><small id="effortModel"></small></div>
+              <button type="button" id="resetEffort" title="Automatikus effort" aria-label="Automatikus effort">↺</button></div>
+            <div class="effort-track"><input id="effortSlider" type="range" min="0" step="1" aria-label="Reasoning effort"><div id="effortTicks" aria-hidden="true"></div></div>
+          </div></div>
           <div class="hint"><kbd>Enter</kbd> küldés · <kbd>Shift+Enter</kbd> új sor · <span id="slashHint"><kbd>/</kbd> parancsok · </span> <kbd>Esc</kbd> leállítás</div>
         </div>
       </section>
@@ -106,6 +114,13 @@
     <section id="appearanceSection" data-panel="appearance">
       <h3>Személyre szabás</h3>
       <form id="appearanceForm" class="appearance-form"></form>
+    </section>
+    <section data-panel="connections" hidden><h3>Spotify-playlistek</h3>
+      <p id="spotifyConnection" role="status"></p>
+      <form id="spotifyConnect"><label>Spotify Client ID<input id="spotifyClientId" autocomplete="off" required maxlength="32"></label>
+        <button class="btn go">Engedélyezés a Spotifyon</button></form>
+      <p>A Spotify fejlesztői alkalmazásban add meg átirányítási címnek: <code>http://127.0.0.1:47812/callback</code>.</p>
+      <button class="btn" id="spotifyDisconnect" hidden>Leválasztás</button>
     </section>
     <section data-panel="connections" hidden><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
       <div id="gmailLogin">
@@ -214,6 +229,7 @@
 <script src="hungarian.js"></script>
 <script src="renderer.js"></script>
 <script src="settings.js"></script>
+<script src="retry-policy.js"></script>
 <script src="appearance.js"></script>
 <script src="voice-ui.js"></script>
 </body>

@@ -1,5 +1,6 @@
 """Drive the desktop player via MPRIS and its installed Bonnie Spicetify extension."""
 from desktop_lock import file_lock
+import spotify_api
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
 
 LOCAL = ("status","launch","play","pause","toggle","next","previous","stop","seek","volume","repeat","shuffle","open",
-         "play_song","play_playlist","list_playlists","create_playlist","add_to_playlist","queue","like")
+         "play_song","play_playlist","list_playlists","create_playlist","add_to_playlist","queue","like",
+         "remove_from_playlist","rename_playlist","delete_playlist")
 
 
 def running():
@@ -175,6 +177,10 @@ def bridge(command):
 def local(action, value="", track=""):
     if action not in LOCAL:
         raise ValueError("Ismeretlen Spotify-művelet.")
+    if action in ("remove_from_playlist","rename_playlist","delete_playlist"):
+        return spotify_api.edit(action,value,track)
+    if action == "list_playlists" and spotify_api.vault(spotify_api.SLOT):
+        return spotify_api.edit(action)
     if action == "status" and not running():
         return {"status":"A Spotify nem fut."}
     if action in ("launch","play","open","play_song","play_playlist","list_playlists","create_playlist","add_to_playlist","queue","like"):

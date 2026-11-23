@@ -323,7 +323,7 @@ def prism_run(instance, action):
     return prism.run(prism.instance(instance),action)
 
 
-@tool("Control the user's installed Spotify desktop app. launch starts it. play_song searches and plays by name; play resumes; open takes a Spotify URI. play_playlist/create_playlist/add_to_playlist take a playlist name in value. For add_to_playlist put the song name in track, or omit for the current song. list_playlists returns names. queue and like take a song name or the current track. volume is 0–100, seek is absolute seconds, repeat None/Track/Playlist, shuffle on/off.", action=tuple(neutron_music.LOCAL), value=str, track=str)
+@tool("Control the user's installed Spotify desktop app. launch starts it. play_song searches and plays by name; play resumes; open takes a Spotify URI. play_playlist/create_playlist/add_to_playlist take a playlist name in value. For add_to_playlist put the song name in track, or omit for the current song. list_playlists returns names and links with the Spotify connection. remove_from_playlist takes a playlist name or link in value and song name or link in track. rename_playlist takes a playlist in value and the new name in track. delete_playlist removes a playlist from the current account library, only when explicitly requested. queue and like take a song name or the current track. volume is 0–100, seek is absolute seconds, repeat None/Track/Playlist, shuffle on/off.", action=tuple(neutron_music.LOCAL), value=str, track=str)
 def spotify_player(action, value="", track=""):
     return neutron_music.local(action, value, track)
 

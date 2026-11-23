@@ -1,4 +1,6 @@
 const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const pause = ms => new Promise(resolve=>setTimeout(resolve,ms));
 
 async function connect() {
@@ -69,6 +71,24 @@ async function connect() {
     }
     await wait("document.querySelector('.hero h2')?.textContent.includes('Dani') && document.documentElement.dataset.motion==='reduced'");
     await screenshot("home");
+    const fixtures=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-drop-"));
+    try{
+      const filename=path.join(fixtures,"jegyzet.txt");
+      fs.writeFileSync(filename,"Melléklet ellenőrzés");
+      await evaluate("document.body.insertAdjacentHTML('beforeend','<input type=file id=testDrop hidden>')");
+      const {root}=await call("DOM.getDocument",{});
+      const {nodeId}=await call("DOM.querySelector",{nodeId:root.nodeId,selector:"#testDrop"});
+      await call("DOM.setFileInputFiles",{nodeId,files:[filename]});
+      await evaluate(`(()=>{
+        const drag=new DataTransfer();
+        drag.items.add(document.querySelector('#testDrop').files[0]);
+        document.querySelector('#chatView').dispatchEvent(new DragEvent('drop',{dataTransfer:drag,bubbles:true,cancelable:true}));
+      })()`);
+      await wait("document.querySelector('#composerFiles')?.textContent.includes('jegyzet.txt')");
+      await evaluate("document.querySelector('#composerFiles button').click()");
+      await wait("document.querySelector('#composerFiles').hidden");
+    } finally { fs.rmSync(fixtures,{recursive:true,force:true}); }
+
     const result = await evaluate(`(async()=>{
       const request={chatId:chat.id,requestId:'smoke',tool:'Bash',input:{command:'echo smoke'}};
       pendingPermissions.add(request);live.set(chat.id,{});renderQuickPermission();
