@@ -34,6 +34,15 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     export: (scope,name) => ipcRenderer.invoke("artifacts:export", scope,name),
   },
   updates: { notes:()=>ipcRenderer.invoke("update:notes"), status:()=>ipcRenderer.invoke("update:status"),check:()=>ipcRenderer.invoke("update:check") },
+  discord:{
+    connect:token=>ipcRenderer.invoke("discord:connect",token),
+    status:()=>ipcRenderer.invoke("discord:status"),
+    disconnect:()=>ipcRenderer.invoke("discord:disconnect"),
+    decide:(id,approve)=>ipcRenderer.invoke("discord:decide",id,approve),
+    portal:()=>ipcRenderer.invoke("discord:portal"),
+    invite:id=>ipcRenderer.invoke("discord:invite",id),
+    open:(guild,channel,message)=>ipcRenderer.invoke("discord:open",guild,channel,message),
+  },
   spotify: {
     status:()=>ipcRenderer.invoke("spotify:status"),
     connect:id=>ipcRenderer.invoke("spotify:connect",id),

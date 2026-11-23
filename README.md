@@ -33,3 +33,9 @@ A chathez csatolt új fájlok az eredeti helyi fájlra mutatnak. A szolgáltató
 A **Videó** fülön válassz egy forrásvideót és vágómodellt. A **Terv jóváhagyása és renderelés** gomb előtt átnézheted és kikapcsolhatod a tervezett betéteket. A modell vágási tervet ad, a Neutron helyben renderel. A Videó fülön megadhatsz saját képeket, mozgó B-rollt és zenét. A Wikimedia-keresés csak közkincsként vagy CC0-ként jelölt képeket javasol, a forráslista külön menthető. A nevek és a licencek ellenőrizhetők renderelés előtt.
 
 A helyi rendereléshez az `ffmpeg` és `ffprobe` programoknak elérhetőknek kell lenniük a PATH-on. H.264 videókódolásra képes build szükséges, időzített feliratokhoz pedig libass támogatás. Helyi, szóidőzítéses átirathoz Whisper CLI és többnyelvű modell kell. Saját SRT-t is bemásolhatsz. A kiválasztott modell a vágási instrukciót, az átiratot és képkezelés esetén a mintaképkockákat kapja meg.
+
+### Discord
+
+Hozz létre egy botot a [Discord Developer Portalon](https://discord.com/developers/applications). A **Beállítások → Discord** lapon a Bot token megadásával csatlakoztathatod, majd meghívhatod egy szerverre. Új szerverhez előbb készíts egy üres szervert a Discordban. Csatornaelőzményekhez a botnak olvasási jogosultság, üzenetszöveghez pedig Message Content Intent szükséges.
+
+Példák a chatben: „Hozz létre a Projekt szerveren egy Közösség kategóriát, benne általános szöveg- és Beszélgető hangcsatornával.”, „Küldj DM-et Annának a botból.”, „Olvasd el Anna válaszát a bot DM-jében.” A Neutron a küldés vagy szerverberendezés előtt megmutatja a jóváhagyandó műveletet. A bot saját nevében kommunikál. A **Megnyitás a Discordban** gomb az asztali klienst próbálja megnyitni.

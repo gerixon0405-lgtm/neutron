@@ -49,12 +49,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render
+          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render test_discord_bot
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./build/python/python.exe scripts/smoke_windows.py
       - name: Test Linux app helpers
         if: runner.os == 'Linux'
-        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render
+        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render test_discord_bot
       - name: Test FCC model catalog
         run: node scripts/test-fcc-catalog.js
       - name: Test direct Windows maintenance command

@@ -145,6 +145,12 @@ async function connect() {
       const saved=await N.config.get();
       if(saved.appearance?.theme!=='mint' || !saved.appearance?.sound || !saved.seenRelease) return false;
       document.querySelector('#accBtn').click();
+      document.querySelector('[data-settings=discord]').click();
+      if(document.querySelector('#discordToken').type!=='password' || document.querySelector('#discordToken').closest('section').hidden) return false;
+      paintDiscord({bot:{id:'1',name:'Neutron teszt'},actions:[{id:'test',bot:'1',kind:'message',state:'pending',
+        payload:{kind:'dm',label:'Teszt címzett',target:'123',text:'Jóváhagyandó üzenet'}}]});
+      if(!document.querySelector('#discordActions').textContent.includes('Jóváhagyandó üzenet') ||
+         !document.querySelector('#discordActions .go')?.textContent.includes('küldés'))return false;
       document.querySelector('[data-settings=updates]').click();
       document.querySelector('#showReleaseNotes').click();
       const u=await N.updates.status();

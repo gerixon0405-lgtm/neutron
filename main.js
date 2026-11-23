@@ -308,6 +308,7 @@ ipcMain.on("voice:silence", () => {voice.silence();send("voice:event",{type:"sil
 spaces.register(ipcMain, () => win);
 mail.register(() => win);
 require("./spotify-auth").register();
+require("./discord-main").register();
 require("./speech-cloud").register();
 require("./video-editor").register(()=>win,launchSpec,fccEffortArgs);
 require("./updater").register();

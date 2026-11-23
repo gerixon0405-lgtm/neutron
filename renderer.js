@@ -263,6 +263,11 @@ function blockEl(b) {
     el = document.createElement("div");
     el.className = "perm";
     el.innerHTML = `<h4>🔐 Engedélyt kér: <code></code></h4><pre></pre><div class="row"></div>`;
+  } else if (b.type === "discord-review") {
+    el=document.createElement("button");
+    el.type="button";el.className="btn discord-review";
+    el.textContent="Discord-jóváhagyás · "+b.target;
+    el.onclick=()=>openDiscordReview(b.id);
   } else if (b.type === "status") {
     el = document.createElement("div"); el.className="retry-status"; el.textContent=b.text; el.setAttribute("role","status");
   } else if (b.type === "error") {

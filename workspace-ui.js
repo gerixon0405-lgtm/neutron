@@ -132,6 +132,9 @@ function receiveOutput(c,it,tool,input,body) {
     if(typeof name!=="string" || !name || /[/\\]/.test(name)) return;
     if(!it.blocks.some(b=>b.type==="attachment" && b.name===name)) appendBlock(c,it,{type:"attachment",name});
     if(chat?.id===c.id) showFiles(name);
+  }else if(["discord_stage_message","discord_stage_setup"].includes(short) && value?.state==="pending"){
+    if(!it.blocks.some(block=>block.type==="discord-review" && block.id===value.id))
+      appendBlock(c,it,{type:"discord-review",id:value.id,target:value.label});
   }else if(["product_search","image_search"].includes(short)){
     const rows=value?.products || value?.images;
     if(Array.isArray(rows) && rows.length) appendBlock(c,it,{type:"cards",rows:rows.slice(0,8)});

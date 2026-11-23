@@ -163,12 +163,26 @@
   <nav class="settings-tabs" aria-label="Beállítások">
     <button type="button" data-settings="appearance" aria-pressed="true">Megjelenés</button>
     <button type="button" data-settings="connections" aria-pressed="false">Kapcsolatok</button>
+    <button type="button" data-settings="discord" aria-pressed="false">Discord</button>
     <button type="button" data-settings="updates" aria-pressed="false">Frissítések</button>
   </nav>
   <div class="settings-body">
     <section id="appearanceSection" data-panel="appearance">
       <h3>Személyre szabás</h3>
       <form id="appearanceForm" class="appearance-form"></form>
+    </section>
+    <section data-panel="discord" hidden><h3>Discord-bot</h3>
+      <p id="discordConnection" role="status">Állapot lekérése…</p>
+      <form id="discordConnect"><label>Bot token<input id="discordToken" type="password" autocomplete="off" required maxlength="180"></label>
+        <button class="btn go" type="submit">Bot csatlakoztatása</button></form>
+      <div class="settings-actions"><button class="btn" id="discordPortal">Developer Portal</button>
+        <button class="btn" id="discordInvite" hidden>Bot meghívása egy szerverre</button>
+        <button class="btn" id="discordOpen">Discord megnyitása</button>
+        <button class="btn" id="discordDisconnect" hidden>Leválasztás</button></div>
+      <details><summary>Bot beállítása</summary><p>Hozz létre egy alkalmazást a Discord Developer Portalon. A Bot lapon hozd létre a bot tokent, majd add meg itt. Hívd meg a botot egy meglévő vagy üres szerverre. Csatornaüzenetek olvasásához a Bot lapon kapcsold be a Message Content Intentet is.</p></details>
+    </section>
+    <section data-panel="discord" hidden><h3>Discord-műveletek</h3>
+      <p id="discordFeedback" role="status"></p><div id="discordActions"></div>
     </section>
     <section data-panel="connections" hidden><h3>Spotify-playlistek</h3>
       <p id="spotifyConnection" role="status"></p>
@@ -303,6 +317,7 @@
 <script src="renderer.js"></script>
 <script src="video-ui.js"></script>
 <script src="settings.js"></script>
+<script src="discord-ui.js"></script>
 <script src="retry-policy.js"></script>
 <script src="appearance.js"></script>
 <script src="speech-wave.js"></script>

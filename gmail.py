@@ -38,9 +38,10 @@ def address(value):
 
 
 def vault(slot, value=None, remove=False):
+    label={"spotify-playlists":"Spotify","discord-bot":"Discord"}.get(slot,"Gmail")
     if os.name=="nt":
         import keyring
-        service="Neutron Spotify" if slot=="spotify-playlists" else "Neutron Gmail"
+        service="Neutron "+label
         if remove:
             if keyring.get_password(service,slot) is not None: keyring.delete_password(service,slot)
         elif value is not None:
@@ -57,7 +58,7 @@ def vault(slot, value=None, remove=False):
     if remove:
         Secret.password_clear_sync(schema,attrs,None)
     elif value is not None:
-        if not Secret.password_store_sync(schema,attrs,Secret.COLLECTION_DEFAULT,("Neutron · Spotify" if slot=="spotify-playlists" else "Neutron · Gmail"),json.dumps(value),None):
+        if not Secret.password_store_sync(schema,attrs,Secret.COLLECTION_DEFAULT,"Neutron · "+label,json.dumps(value),None):
             raise ValueError("A rendszer kulcstartója nem tudta menteni a hitelesítést.")
     else:
         result = Secret.password_lookup_sync(schema,attrs,None)
