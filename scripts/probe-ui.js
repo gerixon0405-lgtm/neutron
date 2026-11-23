@@ -85,6 +85,45 @@ async function connect() {
       return visible && document.querySelector('#effortBar').hidden && opened;
     })()`);
     if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+    await evaluate(`document.querySelector('#dirChip').click()`);
+    await wait("!document.querySelector('#contextPane').hidden && document.querySelector('.context-folder')");
+    const context=await evaluate(`(()=>{
+      paintContext({report:{used:120000,max:400000,compactAt:380000,
+        categories:[{name:'Üzenetek',tokens:110000,kind:'used'},{name:'Tartalék',tokens:10000,kind:'buffer'}],
+        groups:[{name:'MCP-eszközök',rows:[{name:'fixture',tokens:123}]}]}});
+      const pane=document.querySelector('#contextPane');
+      return pane.querySelector('.context-totals').textContent.includes('30%') &&
+        pane.querySelectorAll('.context-bar span').length===2 && pane.textContent.includes('fixture') &&
+        [...pane.querySelector('#compactThreshold').options].some(option=>option.value==="400000");
+    })()`);
+    if(!context)throw Error("Missing context breakdown or compaction controls");
+    if(process.env.NEUTRON_TEST_CONTEXT)
+      await wait("document.querySelector('.context-totals')?.textContent.includes('47%')");
+    await screenshot("context");
+    await evaluate("document.querySelector('#closeContext').click()");
+    await evaluate(`(async()=>{
+      const p=await N.projects.create('Galéria tesztprojekt');
+      await N.artifacts.create({projectId:p.id},'oldal.html','<h1>Előnézet ellenőrzése</h1>');
+      document.querySelector('#artifactsBtn').click();
+      document.querySelector('#newArtifact').click();
+      document.querySelector('#artifactDraftName').value='galéria-jegyzet.md';
+      document.querySelector('#artifactDraftContent').value='# Szerkeszthető dokumentum';
+      const form=document.querySelector('#artifactEditorForm');
+      form.requestSubmit(form.querySelector('button[type=submit]'));
+    })()`);
+    await wait("document.querySelectorAll('.gallery-card').length===2 && document.querySelector('#artifactSelect').value==='galéria-jegyzet.md'");
+    await evaluate("document.querySelector('#closeFiles').click()");
+    await screenshot("gallery");
+    const gallery=await evaluate(`(()=>{
+      const select=document.querySelector('#galleryScope');
+      select.value='projects';select.dispatchEvent(new Event('input'));
+      const cards=document.querySelectorAll('.gallery-card');
+      if(cards.length!==1 || !cards[0].textContent.includes('Galéria tesztprojekt'))return false;
+      cards[0].click();return !document.querySelector('#artifactPane').hidden;
+    })()`);
+    if(!gallery)throw Error("Artifact gallery is missing project files or preview");
+    await wait("document.querySelector('#artifactSelect').value==='oldal.html' && document.querySelector('#previewSlot iframe')?.hasAttribute('sandbox')");
+    await evaluate("document.querySelector('[data-view=chat]').click()");
     const importer=await evaluate(`(()=>{
       showChooser();
       document.querySelector('#importFromChooser').click();

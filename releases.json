@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.5",
+    "title": "Munkakörnyezet és artifactgaléria",
+    "changes": [
+      "A chat felső sávjából megnyitható a munkakörnyezet és a kontextus panelje. Itt látod a hozzáadott mappákat, a modell kontextuskeretét és a tömörítési beállítást.",
+      "A Claude részletes kontextusbontást, a Codex a munkamenet tényleges tokenhasználatát mutatja. Kézi tömörítés is indítható.",
+      "Az Artifactok galéria az összes helyi chat és projekt mentett fájlját egy helyen mutatja. Keresés, szűrés, sablonok és jobb oldali előnézet is elérhető."
+    ]
+  },
+  {
     "version": "1.3.4",
     "title": "Követhetőbb csevegések és rendezettebb beállítások",
     "changes": [

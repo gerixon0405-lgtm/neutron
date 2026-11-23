@@ -41,35 +41,37 @@ async function initProjects() {
       $("#projectDialog").close();
     } catch (err) { toast(err.message,true); } finally { btn.disabled = false; }
   };
-  $("#artifactsBtn").onclick = () => {
-    if (!$("#artifactPane").hidden) return closeFiles();
-    showFiles();
-  };
+  $("#artifactsBtn").onclick = () => setView(view==="gallery" ? "chat" : "gallery");
   $("#closeFiles").onclick = closeFiles;
-  $("#artifactSelect").onchange = () => showFiles($("#artifactSelect").value);
-  window.addEventListener("neutron-turn-ended", updateArtifacts);
-  window.addEventListener("focus", () => { if (chat) updateArtifacts(); });
+  $("#artifactSelect").onchange = () => {
+    selectedFile=$("#artifactSelect").value;
+    updateArtifacts();
+  };
+  window.addEventListener("neutron-turn-ended", () => {updateArtifacts();if(view==="gallery") loadGallery();});
+  window.addEventListener("focus", () => { if (chat) updateArtifacts();if(view==="gallery") loadGallery(); });
 }
-let panelScope = "", fileVersion = "", selectedFile = "";
+let panelScope = null, fileVersion = "", selectedFile = "", galleryPreview=false;
 function closeFiles(){
   ++artifactRequest;
   $("#artifactPane").hidden=true; $("#previewSlot").replaceChildren();
-  fileVersion=""; selectedFile=""; N.artifacts.close().catch(()=>{});
+  panelScope=null;fileVersion="";selectedFile="";galleryPreview=false;N.artifacts.close().catch(()=>{});
 }
-function showFiles(name){
+function showFiles(name, scope=artifactScope()){
+  if (view!=="chat" && view!=="gallery") return;
+  closeContext();
   $("#artifactPane").hidden=false;
-  panelScope=chat.id;
+  panelScope=scope;
+  galleryPreview=view==="gallery";
   if(name) selectedFile=name;
   return updateArtifacts();
 }
 async function updateArtifacts(){
-  if(!chat) return;
-  if(panelScope && panelScope!==chat.id) { closeFiles(); panelScope=""; }
-  const scope=artifactScope(), request=++artifactRequest;
+  if(!chat || !panelScope) return;
+  if(!galleryPreview && panelScope.id!==chat.id) return closeFiles();
+  const scope=panelScope, request=++artifactRequest;
   try {
     const files=await N.artifacts.list(scope);
     if(request!==artifactRequest) return;
-    $("#artifactCount").textContent=files.length || "";
     const pane=$("#artifactPane");
     if(pane.hidden) return;
     const select=$("#artifactSelect"), slot=$("#previewSlot");
@@ -83,7 +85,7 @@ async function updateArtifacts(){
     $("#artifactInfo").textContent=Math.max(1,Math.ceil(chosen.bytes/1024))+" kB";
     $("#artifactSave").onclick=()=>N.artifacts.export(scope,chosen.name).catch(e=>toast(e.message,true));
     $("#artifactImport").onclick=()=>N.artifacts.importPack(scope,chosen.name).then(msg=>toast(msg)).catch(e=>toast(e.message,true));
-    const version=JSON.stringify([scope.id,chosen.name,chosen.time]);
+    const version=JSON.stringify([scope,chosen.name,chosen.time]);
     if(fileVersion===version) return;
     slot.textContent="Előnézet betöltése…";
     const url=await N.artifacts.preview(scope,chosen.name);
@@ -133,7 +135,8 @@ function receiveOutput(c,it,tool,input,body) {
     const name=value?.artifact || (short==="artifact_write" && input?.name);
     if(typeof name!=="string" || !name || /[/\\]/.test(name)) return;
     if(!it.blocks.some(b=>b.type==="attachment" && b.name===name)) appendBlock(c,it,{type:"attachment",name});
-    if(chat?.id===c.id) showFiles(name);
+    if(view==="gallery") loadGallery();
+    else if(chat?.id===c.id) showFiles(name);
   }else if(["discord_stage_message","discord_stage_setup"].includes(short) && value?.state==="pending"){
     if(!it.blocks.some(block=>block.type==="discord-review" && block.id===value.id))
       appendBlock(c,it,{type:"discord-review",id:value.id,target:value.label});

@@ -41,6 +41,7 @@ saying you will. Either call the ScheduleWakeup tool (delaySeconds + prompt sayi
 exactly one line: [[WAKEUP <seconds>: <what to continue>]]. When the time is up Neutron sends you a message and you continue.
 Never claim you will check back later without scheduling a wakeup.`;
 
+const context = require("./chat-context");
 let win;
 const sessions = new Map(); // chatId -> child process (headless fcc-claude)
 let term = null; // the one embedded TUI (fcc-claude in a pty)
@@ -177,8 +178,7 @@ function fccEffortArgs(provider, args) {
 function nemotronLanguage(model) {
   return /nemotron[-_. ]3[.-]5/i.test(model || "") ? "Magyar kérdésre természetes, helyes magyar mondatokban válaszolj. Ellenőrizd az ékezeteket, az egyeztetést és a szóválasztást. A magyar prózába ne keverj véletlen idegen írásjegyeket vagy angol töredékeket. Kódot, fájlneveket, tulajdonneveket és idézeteket pontosan őrizz meg." : "";
 }
-function startSession(chat, projects) {
-  stopSession(chat.id);
+function claudeChatArgs(chat) {
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
     "--include-partial-messages", "--permission-prompt-tool", "stdio",
     "--permission-mode", chat.mode || "default", "--append-system-prompt",
@@ -186,6 +186,13 @@ function startSession(chat, projects) {
   args.push(...spaces.mcpArgs(chat));
   if (chat.model) args.push("--model", chat.model);
   if (chat.effort) args.push("--effort", chat.effort);
+  const limit = context.compactTokens(chat.autoCompactTokens);
+  if (limit && chat.provider!=="fcc") args.push("--autocompact",String(limit));
+  return args;
+}
+function startSession(chat, projects) {
+  stopSession(chat.id);
+  const args = claudeChatArgs(chat);
   args.push(...claudeImport.resumeArgs(chat,projects || projectHistory(chat.provider)));
   const cwd = fs.existsSync(chat.cwd || "") ? chat.cwd : HOME;
   const { bin, env } = launchSpec(chat.provider);
@@ -194,6 +201,10 @@ function startSession(chat, projects) {
   readline.createInterface({ input: p.stdout }).on("line", (line) => {
     let ev;
     try { ev = JSON.parse(line); } catch { ev = { type: "raw", text: line }; }
+    if (ev?.type === "control_response" && ev.response?.request_id?.startsWith("neutron-context-")) {
+      p.emit("neutron-control",ev.response);
+      return;
+    }
     if (sessions.get(chat.id) === p) send("cc:event", { chatId: chat.id, ev });
   });
   p.stderr.on("data", d => {if(sessions.get(chat.id)===p)send("cc:stderr",{chatId:chat.id,text:d.toString()});});
@@ -324,7 +335,7 @@ ipcMain.handle("voice:plan", async (_, { transcript, targets, history,shot,scree
 ipcMain.handle("voice:bind", (_, trigger) => voice.bind(trigger, event => send("voice:event", event)));
 ipcMain.on("voice:speak", (_, text) => voice.speak(text, label => send("voice:event", {type:"error",label}), () => send("voice:event",{type:"spoken"}), bytes=>send("voice:event",{type:"audio",bytes})));
 ipcMain.on("voice:silence", () => {voice.silence();send("voice:event",{type:"silence"});});
-spaces.register(ipcMain, () => win);
+spaces.register(ipcMain, () => win, listChats);
 mail.register(() => win);
 require("./spotify-auth").register();
 require("./discord-main").register();
@@ -402,6 +413,40 @@ ipcMain.handle("uploads:remove",(_,chatId,row)=>uploads.removeFile(chatId,row));
 ipcMain.handle("uploads:reveal",(_,chatId,row)=>shell.showItemInFolder(uploads.resolveFile(chatId,row)));
 
 ipcMain.handle("codex:models", () => codex.models());
+const contextRequests = new Map();
+ipcMain.handle("context:read", (_, chat, detail) => {
+  if (contextRequests.has(chat.id)) return contextRequests.get(chat.id);
+  const request = (async () => {
+    if (chat.provider==="codex") return context.codexContext(codex.binary(),chat.codexThread);
+    if (chat.provider!=="default" && chat.provider!=="fcc" && !loadConfig().accounts?.some(account=>account.id===chat.provider)) return null;
+    const level = detail==="full" ? "full" : "summary";
+    const active = sessions.get(chat.id);
+    if (active && !active.isCodex) return context.claudeContext(active,false,level);
+    const projects = await importedProjects(chat) || projectHistory(chat.provider);
+    const args = claudeChatArgs(chat);
+    const resume = claudeImport.resumeArgs(chat,projects);
+    if (resume[0]==="--resume") args.push(...resume.slice(0,2));
+    args.push("--no-session-persistence");
+    const {bin,env} = launchSpec(chat.provider);
+    const cwd=fs.existsSync(chat.cwd || "") ? chat.cwd : HOME;
+    const child=spawn(bin,fccEffortArgs(chat.provider,args),{cwd,env,windowsHide:true,stdio:["pipe","pipe","ignore"]});
+    return context.claudeContext(child,true,level);
+  })().finally(()=>contextRequests.delete(chat.id));
+  contextRequests.set(chat.id,request);
+  return request;
+});
+ipcMain.on("context:compact-codex", (_, chat) => {
+  if (sessions.has(chat.id)) return;
+  if (chat.provider!=="codex" || !/^[a-f0-9-]{36}$/i.test(chat.codexThread || ""))
+    return send("cc:exit",{chatId:chat.id,code:1,error:"Az első Codex-válasz után tömörítheted a kontextust."});
+  const child=context.compactCodex(codex.binary(),{...chat,autoCompactTokens:context.compactTokens(chat.autoCompactTokens)},error=>{
+    if(sessions.get(chat.id)!==child)return;
+    sessions.delete(chat.id);
+    send("cc:exit",{chatId:chat.id,code:error?1:0,error:error?.message});
+  });
+  child.isCodex=true;
+  sessions.set(chat.id,child);
+});
 ipcMain.on("cc:reset",(_,chatId)=>stopSession(chatId,false));
 ipcMain.on("cc:send", async (_, { chat, text, shot, attachments=[], retry=false }) => {
   const checkpoint={};

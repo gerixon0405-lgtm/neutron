@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="node_modules/@highlightjs/cdn-assets/styles/tokyo-night-dark.min.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="appearance.css">
+<link rel="stylesheet" href="workspace.css">
 </head>
 <body>
 <div class="wallpaper" id="wallpaper" aria-hidden="true"><img id="customWallpaper" alt=""></div>
@@ -51,7 +52,7 @@
       <div class="spacer"></div>
       <span class="run-clock" id="chatClock" hidden><span class="run-indicator" aria-hidden="true"></span><span id="chatActivity">Folyamatban</span><time aria-label="Eltelt idő"></time></span>
       <button class="chip" id="projectHubBtn" type="button" title="Projektváltás" aria-haspopup="dialog"><span aria-hidden="true">▦</span><span id="projectHubName">Projektek</span></button>
-      <button class="chip" id="dirChip" title="Munkakönyvtár"><span>📁</span><span id="dirName">~</span></button>
+      <button class="chip" id="dirChip" title="Munkakörnyezet és kontextus" aria-controls="contextPane" aria-expanded="false"><span aria-hidden="true">▣</span><span id="dirName">~</span></button>
 
       <div class="toggle" id="viewToggle">
         <span class="pill"></span>
@@ -155,8 +156,38 @@
           <button class="btn" id="termRestart">Újraindítás</button></div>
         <div class="term-box" id="termBox"></div>
       </section>
+      <section id="galleryView" class="hidden" inert aria-labelledby="galleryTitle">
+        <div class="gallery-shell">
+          <header class="gallery-header"><div><h2 id="galleryTitle">Artifactok</h2><p id="galleryCount" role="status"></p></div>
+            <button class="btn go" id="newArtifact" type="button">＋ Új artifact</button></header>
+          <div id="galleryTemplates" class="gallery-templates" aria-label="Új artifact sablonból"></div>
+          <div class="gallery-filters">
+            <input type="search" id="gallerySearch" aria-label="Artifact keresése" placeholder="Keresés név vagy munkatér szerint…">
+            <select id="galleryScope" aria-label="Munkatér"><option value="">Minden munkatér</option><option value="projects">Projektek</option><option value="chats">Csevegések</option></select>
+            <select id="gallerySort" aria-label="Rendezés"><option value="recent">Legfrissebb elöl</option><option value="name">Név szerint</option></select>
+            <button class="btn" id="galleryLayout" type="button" aria-pressed="false">Lista</button>
+          </div>
+          <div class="gallery-grid" id="galleryCards"></div>
+          <button class="btn" id="galleryMore" type="button" hidden>További artifactok</button>
+        </div>
+      </section>
     </div>
-    <aside id="artifactPane" hidden aria-label="Fájlok és előnézet"><header><strong>Fájlok</strong><button id="closeFiles" class="dismiss" aria-label="Panel bezárása">×</button></header><select id="artifactSelect" aria-label="Fájl kiválasztása"></select><div id="previewSlot"></div><footer><small id="artifactInfo"></small><button id="artifactImport" hidden class="btn">Prism-import</button><button id="artifactSave" class="btn">Mentés…</button></footer></aside></div>
+    <aside id="artifactPane" hidden aria-label="Fájlok és előnézet"><header><strong>Fájlok és előnézet</strong><button id="closeFiles" class="dismiss" aria-label="Panel bezárása">×</button></header><select id="artifactSelect" aria-label="Fájl kiválasztása"></select><div id="previewSlot"></div><footer><small id="artifactInfo"></small><button id="artifactImport" hidden class="btn">Prism-import</button><button id="artifactSave" class="btn">Mentés…</button></footer></aside>
+    <aside id="contextPane" hidden aria-label="Munkakörnyezet és kontextus">
+      <header class="context-header"><div><span id="contextProvider"></span><h2>Munkakörnyezet</h2></div><button id="closeContext" class="dismiss" aria-label="Munkakörnyezet bezárása">×</button></header>
+      <section class="context-section">
+        <div class="context-local"><span aria-hidden="true">▣</span> Helyi számítógép</div>
+        <div id="contextFolders"></div>
+        <div class="context-actions"><button class="btn" id="contextAddFolder" type="button">＋ Mappa hozzáadása</button><button class="btn" id="contextChangeFolder" type="button">Munkamappa cseréje</button></div>
+        <button class="btn context-remote" type="button" id="contextRemote" hidden>Claude Remote Control ↗</button>
+      </section>
+      <section class="context-section context-usage">
+        <div class="context-heading"><h3>Kontextus</h3><button class="btn" type="button" id="refreshContext">Frissítés</button></div>
+        <div id="contextReport" aria-live="polite"></div>
+        <label class="context-threshold">Automatikus tömörítés<select id="compactThreshold"><option value="">Szolgáltató alapértéke</option></select></label>
+        <button class="btn" id="compactNow" type="button">Tömörítés most</button>
+      </section>
+    </aside></div>
   </main>
 </div>
 <dialog id="settingsDialog" class="studio" aria-labelledby="settingsTitle">
@@ -233,6 +264,16 @@
     <section data-panel="updates" hidden><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div><button class="btn" id="showReleaseNotes">Kiadási megjegyzések</button></section>
   </div>
   </div>
+</dialog>
+<dialog id="artifactEditor" class="studio" aria-labelledby="artifactEditorTitle">
+  <div class="studio-head"><h2 id="artifactEditorTitle">Új artifact</h2><button class="dismiss" id="closeArtifactEditor" aria-label="Bezárás" type="button">×</button></div>
+  <form id="artifactEditorForm" class="workspace-body">
+    <label>Fájlnév<input id="artifactDraftName" maxlength="106" required></label>
+    <label>Munkatér<select id="artifactDraftScope" required></select></label>
+    <label>Tartalom<textarea id="artifactDraftContent" rows="12" required></textarea></label>
+    <p id="artifactDraftError" role="status"></p>
+    <button class="btn go" type="submit">Artifact létrehozása</button>
+  </form>
 </dialog>
 <dialog id="projectHub" class="studio compact" aria-labelledby="projectHubTitle">
   <div class="studio-head"><h2 id="projectHubTitle">Projektek</h2><button class="dismiss" type="button" aria-label="Bezárás">×</button></div>
@@ -355,6 +396,7 @@
 <script src="hungarian.js"></script>
 <script src="video-intent.js"></script>
 <script src="renderer.js"></script>
+<script src="workspace-panels.js"></script>
 <script src="video-ui.js"></script>
 <script src="settings.js"></script>
 <script src="claude-import-ui.js"></script>

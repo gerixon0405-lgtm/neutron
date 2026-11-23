@@ -196,6 +196,7 @@ function renderChat() {
   th.innerHTML = "";
   $("#title").textContent = chat.title;
   updateChips();
+  renderContext();
   if (!chat.items.length) { setBusyUi(); return renderHero(); }
   chat.items.forEach((it) => th.append(itemEl(it)));
   setBusyUi();
@@ -503,8 +504,8 @@ function setBusyUi() {
   $("#modelChip").disabled = $("#effortChip").disabled = !!busy;
   if (busy) showEffort(false);
   $("#effortSlider").disabled = $("#resetEffort").disabled = !!busy || view === "term";
-  $("#dirChip").disabled = !!(chat && (chat.items.length || chat.projectId));
   updateChatClock();
+  renderContextControls();
   renderList();
 }
 
@@ -521,7 +522,6 @@ function updateChips() {
   $("#modelChip").title = isCodex ? "OpenAI Codex" : claude ? `Claude-fiók: ${accName(chat.provider)}` : `Free Claude Code: ${chat.model}`;
   renderEffort();
   $("#dirName").textContent = activeProject()?.name || shortDir(chat.cwd);
-  $("#dirChip").title = chat.cwd;
   $("#modeName").textContent = isCodex ? (chat.codexSandbox === "workspace-write" ? "Szerkesztés" : "Olvasás") : MODES[chat.mode] || chat.mode;
 }
 
@@ -670,8 +670,13 @@ async function submit(c, text, wake = false, shot = null, files=[]) {
   const state=live.get(c.id);
   state.request={actual,text,shot,files};
   state.rateFailures=0;
-  N.cc.send(actual, text, shot, files);
+  sendTurnRequest(actual,text,shot,files);
   save(c).then(refreshList);
+}
+
+function sendTurnRequest(c,text,shot,files,retry) {
+  if(c.provider==="codex" && text.trim()==="/compact" && !files.length && !shot) N.context.compactCodex(c);
+  else N.cc.send(c,text,shot,files,retry);
 }
 
 function stop() {
@@ -718,7 +723,7 @@ function retryRateLimit(c, st, it, error) {
     it.blocks=[];
     if(chat?.id===c.id)renderChat();
     const {actual,text,shot,files}=st.request;
-    N.cc.send({...actual,sessionId:c.sessionId,codexThread:c.codexThread},text,shot,files,true);
+    sendTurnRequest({...actual,sessionId:c.sessionId,codexThread:c.codexThread},text,shot,files,true);
   }, RATE_RETRY_DELAY);
   return true;
 }
@@ -868,11 +873,12 @@ function finishTurn(c, it) {
     const existing=it.blocks.filter(b=>b.type==="attachment").map(b=>b.name);
     N.artifacts.collect({id:c.id,projectId:c.projectId,cwd:c.cwd},{paths:[...paths],build,started:it.started,existing}).then(names=>{
       for(const name of names) appendBlock(c,it,{type:"attachment",name});
-      if(names.length){save(c);if(chat?.id===c.id) showFiles(names.find(n=>n.endsWith(".zip")) || names.find(n=>/\.html?$/i.test(n)) || names[0]);}
+      if(names.length){save(c);if(view==="gallery")loadGallery();else if(chat?.id===c.id)showFiles(names.find(n=>n.endsWith(".zip")) || names.find(n=>/\.html?$/i.test(n)) || names[0]);}
     }).catch(e=>toast(e.message,true));
   }
   window.dispatchEvent(new CustomEvent("neutron-turn-ended",{detail:{id:c.id,turn:it}}));
   live.delete(c.id);
+  invalidateContext(c);
   if (it.blocks.some(b=>b.type==="text") && !it.blocks.some(b=>b.type==="error") && it.meta!=="Leállítva") window.dispatchEvent(new Event("neutron-reply"));
   for (const request of pendingPermissions) {
     if (request.chatId === c.id) pendingPermissions.delete(request);
@@ -906,6 +912,8 @@ N.cc.onExit(({ chatId, code, error }) => {
   if (code !== 0 && code !== null && retryRateLimit(c,st,it,msg))return;
   if (code !== 0 && code !== null) appendBlock(c, it, { type: "error", text: `${c.provider === "codex" ? "A Codex" : "A Claude CLI"} kilépett (${code}).\n${msg}` });
   else if (code === null) it.meta = "Leállítva";
+  else if (c.provider==="codex" && st.request?.text.trim()==="/compact")
+    appendBlock(c,it,{type:"text",text:"A kontextus tömörítve."});
   finishTurn(c, it);
 });
 
@@ -1006,6 +1014,7 @@ function switchModel(provider, model) {
     toast("A szolgáltatóváltáshoz új csevegés indult.");
   }
   restartSession(chat);
+  invalidateContext(chat,false);
   chat.provider = cfg.provider = provider;
   chat.model = model;
   cfg[provider === "codex" ? "codexModel" : provider === "fcc" ? "model" : "claudeModel"] = model;
@@ -1024,17 +1033,7 @@ $("#modeChip").onclick = () => {
       current: cx ? chat.codexSandbox || "read-only" : chat.mode,
     onPick: async m => {
       if (live.has(target.id)) return toast("Várd meg a futó választ a jogosultságok módosításához.");
-      if (m === "add-folder" || m.startsWith("remove:")) {
-        if (m === "add-folder") {
-          const dir = await N.pickDir();
-          if (!dir || target !== chat || live.has(target.id)) return;
-          target.extraDirs = [...new Set([...(target.extraDirs || []),dir])];
-          if (cx) target.codexSandbox = "workspace-write";
-        } else target.extraDirs = target.extraDirs.filter(dir=>dir!==m.slice(7));
-        restartSession(target);
-        if (termChatId === target.id) { N.term.stop(); termChatId = null; }
-        updateChips(); await save(target); return;
-      }
+      if (m === "add-folder" || m.startsWith("remove:")) return editChatFolders(target,m);
       if (cx) chat.codexSandbox = m; else { chat.mode = cfg.mode = m; N.config.set(cfg); }
       restartSession(chat); updateChips(); save(chat);
     },
@@ -1354,13 +1353,6 @@ function loginAccount(a) {
   });
 }
 
-$("#dirChip").onclick = async () => {
-  if (chat.items.length) return toast("A munkakönyvtár csak új csevegésnél választható.");
-  const d = await N.pickDir();
-  if (!d) return;
-  chat.cwd = d; cfg.lastCwd = d; N.config.set(cfg); updateChips();
-};
-
 function slashMenu() {
   if (chat?.provider === "codex") return;
   const v = $("#input").value;
@@ -1411,21 +1403,29 @@ function startTerm(extra = []) {
   N.cc.stop(chat.id); // one writer per session: the TUI takes over until we go back to chat
   termChatId = chat.id;
   const args = ["--permission-mode", chat.mode, ...(chat.model ? ["--model", chat.model] : []),
+    ...(chat.autoCompactTokens && chat.provider!=="fcc" ? ["--autocompact",String(chat.autoCompactTokens)] : []),
     ...(effortLevels(chat).includes(chat.effort) ? ["--effort", chat.effort] : []), ...extra];
-  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd,extraDirs:chat.extraDirs,claudeOrigin:chat.claudeOrigin}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, extraDirs:chat.extraDirs, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
+  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd,extraDirs:chat.extraDirs,claudeOrigin:chat.claudeOrigin}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, extraDirs:chat.extraDirs, autoCompactTokens:chat.autoCompactTokens, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
   $("#termInfo").textContent = `${chat.provider === "codex" ? "Codex" : chat.provider === "fcc" ? "fcc-claude" : "claude · " + accName(chat.provider)} · ${shortDir(chat.cwd)} · ${$("#modelName").textContent}`;
   term.focus();
 }
 
 function setView(v, start) {
   if (v === "term" && live.has(chat.id)) return toast("Előbb várd meg a választ, vagy állítsd le.");
+  if (v!==view) {
+    if (v!=="chat") closeContext();
+    if (v==="gallery" || view==="gallery" || v!=="chat") closeFiles();
+  }
   view = v; renderEffort(); updateChatClock();
+  $("#title").textContent=v==="gallery" ? "Artifactok" : chat.title;
+  $("#dirChip").hidden=v!=="chat";
+  $("#artifactsBtn").setAttribute("aria-pressed",String(v==="gallery"));
   document.querySelectorAll("#viewToggle button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   movePill();
-  $("#chatView").classList.toggle("hidden", v !== "chat");
-  $("#termView").classList.toggle("hidden", v !== "term");
-  $("#videoView").classList.toggle("hidden", v !== "video");
-  for(const [mode,id] of [["chat","chatView"],["term","termView"],["video","videoView"]])$("#"+id).inert=mode!==v;
+  for(const mode of ["chat","term","video","gallery"]) {
+    const panel=$("#"+mode+"View");
+    panel.inert=panel.classList.toggle("hidden",mode!==v);
+  }
   if (v === "term") {
     ensureTerm();
     fit.fit();
@@ -1435,12 +1435,18 @@ function setView(v, start) {
   } else {
     N.term.stop(); // the chat process resumes the same session on the next message
     termChatId = null;
-    if(v==="video") {closeFiles();enterVideoEditor();}
-    else { $("#videoPlayer").pause();$("#input").focus(); }
+    if(v==="video") enterVideoEditor();
+    else {
+      $("#videoPlayer").pause();
+      if(v==="gallery") loadGallery();
+      else $("#input").focus();
+    }
   }
 }
 function movePill() {
   const on = $("#viewToggle button.on"), pill = $("#viewToggle .pill");
+  pill.hidden = !on;
+  if (!on) return;
   pill.style.width = on.offsetWidth + "px";
   pill.style.transform = `translateX(${on.offsetLeft - 4}px)`;
 }

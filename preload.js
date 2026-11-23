@@ -27,6 +27,9 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
   projects: { open: id => ipcRenderer.invoke("projects:open",id), list: () => ipcRenderer.invoke("projects:list"), create: name => ipcRenderer.invoke("projects:create", name) },
   artifacts: {
     list: scope => ipcRenderer.invoke("artifacts:list", scope),
+    catalog: () => ipcRenderer.invoke("artifacts:catalog"),
+    cover: (scope,name) => ipcRenderer.invoke("artifacts:cover",scope,name),
+    create: (scope,name,content) => ipcRenderer.invoke("artifacts:create",scope,name,content),
     importPack: (scope,name) => ipcRenderer.invoke("artifacts:import",scope,name),
     close: () => ipcRenderer.invoke("artifacts:close"),
     collect: (scope,request) => ipcRenderer.invoke("artifacts:collect",scope,request),
@@ -79,6 +82,10 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     onEvent: on("voice:event"),
   },
   codexModels: () => ipcRenderer.invoke("codex:models"),
+  context: {
+    read: (chat,detail) => ipcRenderer.invoke("context:read",chat,detail),
+    compactCodex: chat => ipcRenderer.send("context:compact-codex",chat),
+  },
   maintenance: {
     matches: text => ipcRenderer.invoke("maintenance:matches", text),
     optimize: () => ipcRenderer.invoke("maintenance:optimize")

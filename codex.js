@@ -25,6 +25,8 @@ function models() {
 function options(chat) {
   const args = [...spaces.mcpArgs(chat, true), "--sandbox", chat.codexSandbox === "workspace-write" ? "workspace-write" : "read-only"];
   if (chat.model) args.push("--model", chat.model);
+  const limit = require("./chat-context").compactTokens(chat.autoCompactTokens);
+  if (limit) args.push("-c","model_auto_compact_token_limit="+limit);
   if (["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(chat.codexEffort)) args.push("-c", "model_reasoning_effort=" + chat.codexEffort);
   return args;
 }
