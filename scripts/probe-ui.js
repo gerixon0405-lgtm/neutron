@@ -227,7 +227,24 @@ async function connect() {
         document.querySelector('.turn-meta').textContent===elapsedTime(turn.elapsedMs) && document.querySelector('.think').open;
     })()`);
     if(!thinking) throw Error("Thinking and elapsed time were lost on chat switches");
+    const worker=await evaluate(`(async()=>{
+      newChat(null,'default');
+      const target=chat;
+      live.set(target.id,{});
+      const turn=newTurn(target);
+      recordClaudeTask(target,{subtype:'task_started',task_id:'agent-example',tool_use_id:'tool-example',description:'Próba alügynök'},live.get(target.id));
+      finishTurn(target,turn);
+      if(!taskReports.get(turn) || !document.querySelector('.claude-task[data-status=running]'))return false;
+      newChat();
+      recordClaudeTask(target,{subtype:'task_notification',task_id:'agent-example',status:'completed',summary:'Az alügynök elkészült.',usage:{total_tokens:42,tool_uses:2}});
+      await selectChat(target.id);
+      const card=document.querySelector('.claude-task');
+      return card?.dataset.status==='completed' && card.textContent.includes('Az alügynök elkészült.') &&
+        card.textContent.includes('42 token') && !taskReports.get(turn);
+    })()`);
+    if(!worker)throw Error("Background Claude task did not remain in the chat after the parent finished");
     await evaluate("document.querySelector('#accBtn').click()");
+    if(!await evaluate("document.querySelector('#claudeEconomy').checked"))throw Error("Claude economy is not on by default");
     const quota = await evaluate(`(()=>{
       if(document.querySelector('[data-panel=ai]').hidden) return false;
       const card=document.createElement('div');

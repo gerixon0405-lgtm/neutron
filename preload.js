@@ -76,6 +76,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     snapshot: () => ipcRenderer.invoke("voice:snapshot"),
     transcribe: bytes => ipcRenderer.invoke("voice:transcribe", bytes),
     plan: data => ipcRenderer.invoke("voice:plan", data),
+    summarizeProject: report => ipcRenderer.invoke("voice:summarize-project",report),
     bind: key => ipcRenderer.invoke("voice:bind", key),
     speak: text => ipcRenderer.send("voice:speak", text),
     silence: () => ipcRenderer.send("voice:silence"),

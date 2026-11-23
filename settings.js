@@ -100,6 +100,7 @@ function refreshAi(force = false) {
 $("#refreshUsage").onclick = () => refreshAi(true);
 
 function drawAiAccounts(){
+  $("#claudeEconomy").checked=cfg.claudeEconomy!==false;
   const list=$("#aiAccounts"); list.replaceChildren();
   const cx=accStatus.get("codex"),codexAccount={id:"codex",name:"Codex"};
   const row=accountRow("Codex · ChatGPT",cx?.loggedIn?"Bejelentkezve":cx?.missing?"A Codex CLI nem található":cx?"Nincs bejelentkezve":"Állapot lekérése…");
@@ -124,6 +125,14 @@ function drawAiAccounts(){
   }
   $("#settingsFcc").textContent=$("#fccText").textContent;
 }
+$("#claudeEconomy").onchange=async event=>{
+  const control=event.target, previous=cfg.claudeEconomy;
+  control.disabled=true;
+  cfg.claudeEconomy=control.checked;
+  try {await N.config.set(cfg);if(chat)renderEffort();}
+  catch(error){cfg.claudeEconomy=previous;control.checked=previous!==false;toast(error.message,true);}
+  finally{control.disabled=false;}
+};
 $("#addClaudeForm").onsubmit=async e=>{
   e.preventDefault();const btn=e.submitter;
   const name=$("#newAccountName").value.trim();

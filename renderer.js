@@ -20,6 +20,9 @@ const open = new Map();     // chatId -> chat object (loaded)
 const pendingFiles = new Map();
 const live = new Map();     // chatId -> { idx: Map(index->block), streamed: Set(msgId), stderr: "" }
 const blockEls = new WeakMap();
+const taskReports = new WeakMap();
+const taskTools = new WeakMap();
+const claudeEconomy = c => ClaudeSessionPolicy.enabled(c.provider,cfg.claudeEconomy);
 const chatScroll = new WeakMap();
 let slashMeta = { slash: [], term: [] };
 let term = null, fit = null, termChatId = null;
@@ -110,7 +113,8 @@ function renderList() {
     if(i===0 && c.pinnedAt)list.insertAdjacentHTML("beforeend",'<div class="chat-list-group">Rögzítve</div>');
     if(i>0 && !c.pinnedAt && shown[i-1].pinnedAt)list.insertAdjacentHTML("beforeend",'<div class="chat-list-group">Legutóbbiak</div>');
     const el = document.createElement("div");
-    el.className = "chat-item" + (chat && c.id === chat.id ? " active" : "") + (live.has(c.id) ? " busy" : "");
+    const busy=live.has(c.id) || open.get(c.id)?.items.some(turn=>turn.blocks?.some(b=>b.type==="claude-task" && b.status==="running"));
+    el.className = "chat-item" + (chat && c.id === chat.id ? " active" : "") + (busy ? " busy" : "");
     el.style.setProperty("--i", i);
     el.innerHTML = `<span>${esc(c.title)}</span><button type="button" class="pin-chat" title="${c.pinnedAt?"Rögzítés feloldása":"Csevegés rögzítése"}" aria-label="Csevegés rögzítése" aria-pressed="${!!c.pinnedAt}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5h6m-5 .2v3.4l-2 2.4v1h8v-1l-2-2.4V2.7m-2 7v4"/></svg></button><button class="del" title="Törlés" aria-label="Törlés">✕</button>`;
     el.onclick = () => selectChat(c.id);
@@ -191,6 +195,9 @@ async function getChat(id) {
       delete c.messages;
     }
     c.sessionId ||= crypto.randomUUID();
+    for(const block of c.items.flatMap(item=>item.blocks || [])){
+      if(block.type==="claude-task" && block.status==="running")block.status="interrupted";
+    }
     c.cwd ||= home; c.mode ||= "default"; c.provider ||= "fcc"; c.effort ||= ""; c.model ??= c.provider === "fcc" ? cfg.model || defaultModel() : "";
     open.set(id, c);
   }
@@ -300,6 +307,16 @@ function blockEl(b) {
     el = document.createElement("details");
     el.className = "tool";
     el.innerHTML = `<summary><span class="st"></span><b></b><span class="arg"></span></summary><pre class="in"></pre><pre class="out"></pre>`;
+  } else if (b.type === "claude-task") {
+    el=document.createElement("details");
+    el.className="claude-task";
+    el.innerHTML='<summary><strong></strong><small></small></summary><p></p><pre></pre><button type="button" class="btn">Futás leállítása</button>';
+    el.querySelector("button").title="A chat teljes futásának leállítása";
+    el.querySelector("button").onclick=()=>N.cc.stop(b.chatId);
+  } else if (b.type === "continue") {
+    el=document.createElement("button");
+    el.type="button";el.className="btn";el.textContent="Folytatás";
+    el.onclick=()=>submit(chat,"Folytasd a feladatot a meglévő eredményekből. A már elvégzett lépéseket ne ismételd meg.");
   } else if (b.type === "perm") {
     el = document.createElement("div");
     el.className = "perm";
@@ -352,6 +369,18 @@ function updateBlock(b) {
     out.hidden = b.result == null;
     el.classList.toggle("done", b.result != null && !b.isError);
     el.classList.toggle("err", !!b.isError);
+  } else if (b.type === "claude-task") {
+    el.dataset.status=b.status;
+    el.querySelector("strong").textContent=b.title;
+    const label={running:"Fut",completed:"Kész",failed:"Hiba",stopped:"Leállítva",interrupted:"Megszakadt"}[b.status];
+    el.querySelector("small").textContent=[label,b.usage?.total_tokens==null?"":b.usage.total_tokens.toLocaleString("hu-HU")+" token",
+      b.usage?.tool_uses==null?"":b.usage.tool_uses+" lépés",
+      b.usage?.duration_ms==null?"":elapsedTime(b.usage.duration_ms)].filter(Boolean).join(" · ");
+    el.querySelector("p").textContent=[b.summary,b.tool ? "Eszköz: "+b.tool : ""].filter(Boolean).join(" · ");
+    el.querySelector("p").hidden=!b.summary && !b.tool;
+    el.querySelector("pre").textContent=b.output || "";
+    el.querySelector("pre").hidden=!b.output;
+    el.querySelector("button").hidden=b.status!=="running";
   } else if (b.type === "perm") {
     el.querySelector("code").textContent = b.tool;
     el.querySelector("pre").textContent = toolArg(b.input) || JSON.stringify(b.input, null, 2);
@@ -384,7 +413,7 @@ function updateBlock(b) {
     if (!row.children.length) {
       const c = () => open.get(b.chatId);
       row.innerHTML = `<button class="btn go">Most</button><button class="btn no">Mégse</button>`;
-      row.children[0].onclick = () => { b.at = Date.now(); b.source = "marker"; arm(c(), b); };
+      row.children[0].onclick = () => { b.at = Date.now(); b.source = "marker"; arm(c(), b, true); };
       row.children[1].onclick = () => cancelWake(c(), b);
     }
   }
@@ -396,6 +425,7 @@ const wakeTimers = new Map(); // chatId -> timeout
 const wakes = new Set();      // pending wake blocks, for the countdown
 
 function scanWake(c, it) {
+  if(claudeEconomy(c))return;
   let delay, prompt;
   const tool = [...it.blocks].reverse().find((b) => b.type === "tool" && b.name === "ScheduleWakeup" && b.input);
   if (tool) {
@@ -419,19 +449,20 @@ function scanWake(c, it) {
   arm(c, b);
 }
 
-function arm(c, b) {
+function arm(c, b, manual=false) {
   clearTimeout(wakeTimers.get(c.id));
   wakes.add(b);
   // tool wakeups are fired by Claude Code itself; Neutron only steps in if that did not happen (process restarted, app closed)
   const grace = b.source === "tool" ? 15000 : 0;
-  wakeTimers.set(c.id, setTimeout(() => fireWake(c, b), Math.max(0, b.at - Date.now() + grace)));
+  wakeTimers.set(c.id, setTimeout(() => fireWake(c, b, manual), Math.max(0, b.at - Date.now() + grace)));
 }
 
-function fireWake(c, b) {
+function fireWake(c, b, manual) {
   if (b.state !== "pending") return;
+  if(claudeEconomy(c) && !manual)return cancelWake(c,b);
   if (!hasChatProvider(c)) return cancelWake(c, b);
   // busy or the terminal owns the session: try again shortly
-  if (live.has(c.id) || termChatId === c.id) return wakeTimers.set(c.id, setTimeout(() => fireWake(c, b), 5000));
+  if (live.has(c.id) || termChatId === c.id) return wakeTimers.set(c.id, setTimeout(() => fireWake(c, b, manual), 5000));
   b.state = "fired"; wakes.delete(b); updateBlock(b);
   if (chat?.id !== c.id) toast(`⏰ „${c.title}” felébredt és folytatja.`);
   submit(c, `⏰ Ébresztés: ${b.prompt || "folytasd a feladatot ott, ahol abbahagytad."}`, true);
@@ -458,7 +489,7 @@ function renderQuickPermission() {
 
 function answerPerm(b, ans) {
   const c = open.get(b.chatId);
-  if (!c || !live.has(c.id) || !pendingPermissions.delete(b)) return;
+  if (!c || (!live.has(c.id) && !b.taskId) || !pendingPermissions.delete(b)) return;
   const resp = ans === "deny"
     ? { behavior: "deny", message: "A felhasználó elutasította ezt a műveletet." }
     : { behavior: "allow", updatedInput: b.input, ...(ans === "always" ? { updatedPermissions: b.suggestions } : {}) };
@@ -728,12 +759,23 @@ function stop() {
 
 // ---------- protocol ----------
 function retryRateLimit(c, st, it, error) {
+  const native=c.provider!=="fcc" && c.provider!=="codex";
+  const quota=native && (st.quota || ClaudeSessionPolicy.quota(null,error));
+  if(quota){
+    const reset=quota.reset ? " Visszaállás: "+new Intl.DateTimeFormat("hu-HU",{dateStyle:"short",timeStyle:"short"}).format(quota.reset)+"." : "";
+    appendBlock(c,it,{type:"error",text:"A Claude előfizetési kerete elfogyott."+reset+" A Neutron leállította az automatikus újrapróbálást."});
+    it.meta="Claude-keret";
+    finishTurn(c,it);
+    return true;
+  }
   if(!st.request || !(st.rateError || isRateLimit(error)))return false;
   st.rateFailures++;
-  const decision=rateRetryDecision(st.rateFailures,st.effects || it.blocks.some(b=>b.type==="tool" || b.type==="perm"));
+  const charged=native && st.charged;
+  const decision=rateRetryDecision(st.rateFailures,charged || st.effects || it.blocks.some(b=>b.type==="tool" || b.type==="perm" || b.type==="claude-task"));
   if(decision!=="wait"){
     appendBlock(c,it,{type:"error",text:decision==="limit"?
       "A szolgáltató egymás után tízszer túl sok kérést jelzett. Az újrapróbálás leállt.":
+      charged?"A Claude már felhasznált tokeneket ehhez a kéréshez. A részleges eredmény megmaradt, a futást kézzel folytathatod.":
       "A szolgáltató túl sok kérést jelzett. A már megkezdett műveletek miatt a Neutron nem ismétli meg automatikusan a teljes kérést."});
     it.meta="API-korlát";
     finishTurn(c,it);
@@ -758,11 +800,89 @@ function retryRateLimit(c, st, it, error) {
   return true;
 }
 
+function findClaudeTask(c,ev) {
+  for(const turn of c.items.toReversed()){
+    const block=turn.blocks?.findLast(b=>b.type==="claude-task" &&
+      (ev.task_id ? b.taskId===ev.task_id && (!ev.run_id || !b.runId || b.runId===ev.run_id)
+        : b.toolId===ev.parent_tool_use_id));
+    if(block)return {turn,block};
+  }
+}
+function recordClaudeTask(c,ev,st) {
+  if(typeof ev.task_id!=="string")return;
+  let entry=findClaudeTask(c,ev);
+  if(!entry){
+    const turn=c.items.findLast(item=>item.blocks?.some(b=>b.type==="tool" && b.id===ev.tool_use_id)) ||
+      (st ? currentTurn(c) : c.items.findLast(item=>item.role==="assistant") || newTurn(c,true));
+    const block={type:"claude-task",chatId:c.id,taskId:ev.task_id,runId:ev.run_id,toolId:ev.tool_use_id,
+      status:"running",title:"Claude háttérfeladat"};
+    appendBlock(c,turn,block);
+    entry={turn,block};
+  }
+  if(st)st.effects=true;
+  const {turn,block}=entry;
+  const title=ev.description || ev.patch?.description;
+  if(typeof title==="string")block.title=title.slice(0,200);
+  block.runId ||= ev.run_id;
+  block.toolId ||= ev.tool_use_id;
+  if(ev.usage)block.usage=ev.usage;
+  if(ev.last_tool_name)block.tool=ev.last_tool_name;
+  if(ev.summary || ev.patch?.error)block.summary=String(ev.summary || ev.patch.error).slice(0,2000);
+  const state=ev.status || ev.patch?.status;
+  if(["completed","failed","stopped","killed"].includes(state))block.status=state==="killed"?"stopped":state;
+  if(ev.subtype==="task_started")block.status="running";
+  schedule(c,block);
+  if(ev.subtype!=="task_progress")save(c).then(refreshList);
+  if(block.status!=="running"){
+    for(const request of pendingPermissions)if(request.chatId===c.id && request.taskId===block.taskId){
+      pendingPermissions.delete(request);schedule(c,request);
+    }
+    renderQuickPermission();
+    taskReports.get(turn)?.();
+  }
+}
+
 N.cc.onEvent(({ chatId, ev }) => {
   const c = open.get(chatId);
   if (!c) return;
   let st = live.get(chatId);
   if(st?.retryTimer)return;
+  if(ev.type==="rate_limit_event"){
+    if(st)st.quota=ClaudeSessionPolicy.quota(ev.rate_limit_info) || st.quota;
+    return;
+  }
+  if(ev.type==="system" && ["task_started","task_progress","task_updated","task_notification"].includes(ev.subtype)){
+    recordClaudeTask(c,ev,st);
+    return;
+  }
+  if(ev.parent_tool_use_id && ev.type!=="control_request"){
+    const task=findClaudeTask(c,ev);
+    if(task){
+      const {turn,block}=task;
+      const content=Array.isArray(ev.message?.content)?ev.message.content:[];
+      if(ev.type==="assistant"){
+        const text=content.filter(b=>b.type==="text" && b.text).map(b=>b.text).join("\n");
+        if(text){block.output=text.slice(-5000);schedule(c,block);}
+        const tools=taskTools.get(block) || new Map();
+        for(const call of content)if(call.type==="tool_use")tools.set(call.id,call);
+        if(tools.size)taskTools.set(block,tools);
+      }
+      if(ev.type==="user"){
+        const tools=taskTools.get(block);
+        for(const result of content){
+          if(result.type!=="tool_result")continue;
+          const tool=tools?.get(result.tool_use_id);tools?.delete(result.tool_use_id);
+          if(!tool || result.is_error)continue;
+          if(["Write","Edit","MultiEdit"].includes(tool.name) && tool.input?.file_path)
+            (turn.changedPaths ||= []).push(tool.input.file_path);
+          if(/\b(?:build|vite|webpack|parcel)\b/i.test(tool.input?.command || ""))turn.backgroundBuild=true;
+          const body=Array.isArray(result.content)?result.content.map(x=>x.text || "").join("\n"):String(result.content || "");
+          receiveOutput(c,turn,tool.name,tool.input,body);
+        }
+      }
+    }
+    return;
+  }
   if(ev.type==="neutron-model" && st){
     currentTurn(c).routed={model:ev.model,reason:ev.reason};
     c.lastRoutedModel=ev.model;
@@ -806,13 +926,30 @@ N.cc.onEvent(({ chatId, ev }) => {
     cfg.slashCache = slashMeta; N.config.set(cfg);
     return;
   }
-  if (!st) return;
-  // shortcut: subagent (Task) inner streams are hidden; only the top-level conversation is shown
-  if (ev.parent_tool_use_id) return;
+  if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
+    const parent=ev.parent_tool_use_id ? findClaudeTask(c,ev) : null;
+    if(!st && !parent)return;
+    const it=parent?.turn || currentTurn(c);
+    if ([...pendingPermissions].some(b => b.chatId === chatId && b.requestId === ev.request_id)) return;
+    const request = {
+      type: "perm", chatId, taskId:parent?.block.taskId, requestId: ev.request_id, tool: ev.request.tool_name,
+      input: ev.request.input, suggestions: ev.request.permission_suggestions,
+    };
+    pendingPermissions.add(request);
+    appendBlock(c, it, request);
+    renderQuickPermission();
+    window.dispatchEvent(new CustomEvent("neutron-permission",{detail:chatId}));
+    if (chat?.id !== chatId) toast(`„${c.title}”: engedélyt kér (${ev.request.tool_name})`);
+    return;
+  }
 
+  if (!st) return;
   if (ev.type === "stream_event") {
     const e = ev.event, it = currentTurn(c);
-    if (e.type === "message_start") st.streamed.add(e.message.id);
+    if (e.type === "message_start") {
+      st.streamed.add(e.message.id);
+      st.charged ||= ClaudeSessionPolicy.accounted(e.message.usage);
+    }
     else if (e.type === "content_block_start") {
       const cb = e.content_block;
       const b = cb.type === "tool_use" ? { type: "tool", id: cb.id, name: cb.name, json: "" }
@@ -840,6 +977,7 @@ N.cc.onEvent(({ chatId, ev }) => {
   }
 
   if (ev.type === "assistant") {
+    st.charged ||= ClaudeSessionPolicy.accounted(ev.message.usage);
     if (st.streamed.has(ev.message.id)) return;
     const it = currentTurn(c);
     for (const cb of ev.message.content || []) {
@@ -868,31 +1006,21 @@ N.cc.onEvent(({ chatId, ev }) => {
     return;
   }
 
-  if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
-    const it = currentTurn(c);
-    if ([...pendingPermissions].some(b => b.chatId === chatId && b.requestId === ev.request_id)) return;
-    const request = {
-      type: "perm", chatId, requestId: ev.request_id, tool: ev.request.tool_name,
-      input: ev.request.input, suggestions: ev.request.permission_suggestions,
-    };
-    pendingPermissions.add(request);
-    appendBlock(c, it, request);
-    renderQuickPermission();
-    window.dispatchEvent(new CustomEvent("neutron-permission",{detail:chatId}));
-    if (chat?.id !== chatId) toast(`„${c.title}”: engedélyt kér (${ev.request.tool_name})`);
-    return;
-  }
-
   if (ev.type === "result") {
     const it = currentTurn(c);
     c.sessionId = ev.session_id || c.sessionId;
+    st.charged ||= ClaudeSessionPolicy.accounted(ev.usage);
     if(ev.is_error && retryRateLimit(c,st,it,[ev.result,ev.errors,st.stderr,...it.blocks.filter(b=>b.type==="text").map(b=>b.text)].filter(Boolean).join("\n")))return;
     const error = ev.result || ev.errors?.join("\n");
-    if (ev.is_error && error) appendBlock(c, it, { type: "error", text: error });
+    if(ev.subtype==="error_max_turns"){
+      it.incomplete=true;
+      appendBlock(c,it,{type:"status",text:"A Claude elérte az üzenetenkénti körkorlátot. Az elkészült rész megmaradt."});
+      appendBlock(c,it,{type:"continue"});
+    } else if (ev.is_error) appendBlock(c, it, { type: "error", text: error || "A Claude futása megszakadt." });
     else if (!it.blocks.some((b) => b.type === "text") && typeof ev.result === "string" && ev.result.trim())
       appendBlock(c, it, { type: "text", text: ev.result });
     c.sessionId = ev.session_id || c.sessionId;
-    const tok = ev.usage ? `${(ev.usage.input_tokens || 0) + (ev.usage.cache_read_input_tokens || 0)} be / ${ev.usage.output_tokens || 0} ki token` : "";
+    const tok = ClaudeSessionPolicy.tokenLabel(ev.usage);
     it.meta = [ev.num_turns ? `${ev.num_turns} lépés` : "", tok].filter(Boolean).join(" · ");
     finishTurn(c, it);
   }
@@ -902,25 +1030,11 @@ function finishTurn(c, it) {
   const scheduled=live.get(c.id)?.scheduled;
   it.elapsedMs = Math.max(0, Date.now() - it.started);
   for(const b of it.blocks) if(b.hu && b.type==="text") b.text=repairHungarian(b.text);
-  const paths=new Set(it.changedPaths || []);
-  delete it.changedPaths;
-  const success=it.blocks.filter(b=>b.type==="tool" && !b.isError && b.result!=null);
-  for(const b of success) if(["Write","Edit","MultiEdit"].includes(b.name) && b.input?.file_path) paths.add(b.input.file_path);
-  const build=success.some(b=>/\b(?:build|vite|webpack|parcel)\b/i.test(b.input?.command || ""));
-  let outputReady=Promise.resolve();
-  if(it.started && (paths.size || build)) {
-    const existing=it.blocks.filter(b=>b.type==="attachment").map(b=>b.name);
-    outputReady=N.artifacts.collect({id:c.id,projectId:c.projectId,cwd:c.cwd},{paths:[...paths],build,started:it.started,existing}).then(names=>{
-      for(const name of names) appendBlock(c,it,{type:"attachment",name});
-      if(names.length){save(c);if(view==="gallery")loadGallery();else if(chat?.id===c.id)showFiles(names.find(n=>n.endsWith(".zip")) || names.find(n=>/\.html?$/i.test(n)) || names[0]);}
-    }).catch(e=>toast(e.message,true));
-  }
-  window.dispatchEvent(new CustomEvent("neutron-turn-ended",{detail:{id:c.id,turn:it}}));
   live.delete(c.id);
   invalidateContext(c);
   if (it.blocks.some(b=>b.type==="text") && !it.blocks.some(b=>b.type==="error") && it.meta!=="Leállítva") window.dispatchEvent(new Event("neutron-reply"));
   for (const request of pendingPermissions) {
-    if (request.chatId === c.id) pendingPermissions.delete(request);
+    if (request.chatId === c.id && !request.taskId) pendingPermissions.delete(request);
   }
   renderQuickPermission();
   if (c.provider !== "codex" && it.meta !== "Leállítva") scanWake(c, it);
@@ -939,12 +1053,44 @@ function finishTurn(c, it) {
   const stopped=it.meta==="Leállítva";
   const failed=it.blocks.some(b=>b.type==="error");
   const waiting=it.blocks.some(b=>b.type==="wake" && b.state==="pending");
-  outputReady.then(()=>{
-    if(scheduled)N.schedules.finish(scheduled.id,scheduled.runId,stopped?"stopped":failed?"failed":"done");
-    if(stopped || (waiting && !failed) || (!scheduled && !failed && !it.blocks.some(b=>["text","attachment","tool"].includes(b.type))))return;
-    N.notices.complete({title:failed?"A futás hibával zárult":scheduled?"Az ütemezett futás véget ért":"Elkészült a válasz",
-      body:(scheduled?.title || c.title)+" · "+elapsedTime(it.elapsedMs),chatId:c.id,failed});
-  });
+  async function report() {
+    if(!stopped && it.blocks.some(b=>b.type==="claude-task" && b.status==="running")){
+      taskReports.set(it,report);
+      return;
+    }
+    taskReports.delete(it);
+    const paths=new Set(it.changedPaths || []);
+    delete it.changedPaths;
+    const tools=it.blocks.filter(b=>b.type==="tool" && !b.isError && b.result!=null);
+    for(const b of tools)if(["Write","Edit","MultiEdit"].includes(b.name) && b.input?.file_path)paths.add(b.input.file_path);
+    const build=!!it.backgroundBuild || tools.some(b=>/\b(?:build|vite|webpack|parcel)\b/i.test(b.input?.command || ""));
+    delete it.backgroundBuild;
+    if(it.started && (paths.size || build)){
+      const existing=it.blocks.filter(b=>b.type==="attachment").map(b=>b.name);
+      try {
+        const names=await N.artifacts.collect({id:c.id,projectId:c.projectId,cwd:c.cwd},{paths:[...paths],build,started:it.started,existing});
+        for(const name of names)appendBlock(c,it,{type:"attachment",name});
+        if(names.length){
+          save(c);
+          if(view==="gallery")loadGallery();
+          else if(chat?.id===c.id)showFiles(names.find(n=>n.endsWith(".zip")) || names.find(n=>/\.html?$/i.test(n)) || names[0]);
+        }
+      }catch(error){toast(error.message,true);}
+    }
+    const incomplete=it.incomplete || it.blocks.some(b=>b.type==="claude-task" && ["failed","stopped","interrupted"].includes(b.status));
+    const files=it.blocks.filter(b=>b.type==="attachment").map(b=>b.name);
+    const major=build || paths.size>=3 || files.some(name=>/\.(zip|mp4)$/i.test(name)) ||
+      (!!(c.projectId || paths.size || files.length) && it.elapsedMs>=45000);
+    const project=major && !stopped && !waiting && !failed && !incomplete;
+    window.dispatchEvent(new CustomEvent("neutron-turn-ended",{detail:{id:c.id,turn:it,project}}));
+    if(scheduled)N.schedules.finish(scheduled.id,scheduled.runId,stopped?"stopped":failed || incomplete?"failed":"done");
+    if(stopped || (waiting && !failed) || (!scheduled && !failed && !incomplete && !it.blocks.some(b=>["text","attachment","tool","claude-task"].includes(b.type))))return;
+    N.notices.complete({title:failed?"A futás hibával zárult":incomplete?"A Claude futása félbemaradt":scheduled?"Az ütemezett futás véget ért":"Elkészült a válasz",
+      body:(scheduled?.title || c.title)+" · "+elapsedTime(it.elapsedMs),chatId:c.id,failed:failed || !!incomplete});
+    if(project)window.dispatchEvent(new CustomEvent("neutron-project-complete",
+      {detail:{id:c.id,turn:it,title:c.title,files}}));
+  }
+  void report();
 }
 
 N.cc.onStderr(({ chatId, text }) => {
@@ -954,7 +1100,24 @@ N.cc.onStderr(({ chatId, text }) => {
 
 N.cc.onExit(({ chatId, code, error }) => {
   const c = open.get(chatId), st = live.get(chatId);
-  if (!c || !st || st.retryTimer) return;
+  if (!c || st?.retryTimer) return;
+  const changed = new Set();
+  for(const turn of c.items)for(const block of turn.blocks || []){
+    if(block.type==="claude-task" && block.status==="running"){
+      block.status=code===null?"stopped":"interrupted";
+      changed.add(turn);
+      schedule(c,block);
+    }
+  }
+  for(const request of pendingPermissions)if(request.chatId===c.id){
+    pendingPermissions.delete(request);schedule(c,request);
+  }
+  if(changed.size){
+    changed.forEach(turn=>taskReports.get(turn)?.());
+    save(c).then(refreshList);
+  }
+  renderQuickPermission();
+  if(!st)return;
   const it = currentTurn(c);
   const msg = error || st.stderr.split("\n").filter((l) => l && !l.includes("unrecognized_model")).slice(-8).join("\n");
   if (code !== 0 && code !== null && retryRateLimit(c,st,it,msg))return;
@@ -1135,7 +1298,8 @@ function renderEffort() {
   if(ticks.childElementCount!==levels.length)ticks.replaceChildren(...levels.map(()=>document.createElement("i")));
   const label = () => {
     const value = EFFORTS[levels[slider.value]] || levels[slider.value];
-    $("#effortChip").textContent = $("#effortName").textContent = value; slider.setAttribute("aria-valuetext", value);
+    const effective = value==="Auto" && claudeEconomy(chat) ? "Auto · Low" : value;
+    $("#effortChip").textContent = $("#effortName").textContent = effective; slider.setAttribute("aria-valuetext", effective);
     slider.style.setProperty("--fill", (100 * Number(slider.value) / Math.max(1,levels.length - 1)) + "%");
   };
   label(); slider.oninput = label;

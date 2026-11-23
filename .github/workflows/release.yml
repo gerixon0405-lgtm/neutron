@@ -73,6 +73,8 @@ jobs:
         run: node scripts/test-schedules-hybrid.js
       - name: Test boot schedules and login entries
         run: node scripts/test-startup.js
+      - name: Test Claude usage policy
+        run: node scripts/test-claude-session-policy.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

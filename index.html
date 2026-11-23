@@ -220,6 +220,7 @@
     </section>
     <section data-panel="ai">
       <h3>Kapcsolatok kezelése</h3>
+      <label class="claude-economy"><input id="claudeEconomy" type="checkbox"><span><strong>Takarékos Claude mód</strong><small>Alacsony automatikus effort, üzenetenként legfeljebb 12 Claude-kör és kézi folytatás a hosszú futásoknál.</small></span></label>
       <form id="addClaudeForm"><label>Új Claude-fiók neve<input id="newAccountName" maxlength="60" placeholder="Például Munka" required></label><button class="btn">Claude-fiók hozzáadása</button></form>
       <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small><small>A proxyhoz nincs elérhető fiókszintű kvóta.</small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
     </section>
@@ -370,6 +371,7 @@
     <div class="model-fields"><label>Beszédgomb<button type="button" class="btn" id="recordKey"></button></label>
       <label class="tick"><input type="checkbox" id="globalVoice"> Más alkalmazásokból is használható</label></div>
     <label class="tick"><input type="checkbox" id="voiceScreen"> A beszédgomb felengedésekor a képernyőképet is küldje el a kiválasztott modellnek</label>
+    <label class="tick"><input type="checkbox" id="voiceProjectSummary"> Olvasson fel rövid összefoglalót, ha egy nagyobb projekt elkészül a háttérben</label>
     <div id="sideChoices" hidden><button type="button" class="btn" data-binding="Mouse4">Egér 4 (vissza)</button>
       <button type="button" class="btn" data-binding="Mouse5">Egér 5 (előre)</button></div>
     <label>Hanggal indított feladatok munkamappája<button type="button" class="btn" id="voiceFolder"></button></label>
@@ -426,6 +428,7 @@
 <script src="hungarian.js"></script>
 <script src="video-intent.js"></script>
 <script src="nemotron-hybrid.js"></script>
+<script src="claude-session-policy.js"></script>
 <script src="renderer.js"></script>
 <script src="workspace-panels.js"></script>
 <script src="schedules-ui.js"></script>

@@ -1,0 +1,20 @@
+const assert=require("node:assert/strict");
+const policy=require("../claude-session-policy");
+const now=Date.UTC(2026,10,23,18);
+assert.equal(policy.enabled("default"),true);
+assert.equal(policy.enabled("acc-1",false),false);
+assert.equal(policy.enabled("fcc"),false);
+assert.equal(policy.enabled("codex"),false);
+assert.equal(policy.effort("",true),"low");
+assert.equal(policy.effort("high",true),"high");
+assert.equal(policy.effort("",false),"");
+assert.deepEqual(policy.quota({status:"rejected",resetsAt:(now+5*3600000)/1000},"",now),{reset:now+5*3600000});
+assert.deepEqual(policy.quota({status:"rejected",errorCode:"credits_required"},"",now),{reset:null});
+assert.deepEqual(policy.quota(null,"You've hit your limit · resets 8 pm",now),{reset:null});
+assert.equal(policy.quota({status:"allowed_warning",resetsAt:(now+3600000)/1000},"",now),null);
+assert.equal(policy.quota({status:"rejected",resetsAt:(now+10000)/1000},"HTTP 429 Too Many Requests",now),null);
+assert.equal(policy.accounted({cache_creation_input_tokens:340}),true);
+assert.equal(policy.accounted({cache_read_input_tokens:340}),true);
+assert.equal(policy.accounted({input_tokens:0,output_tokens:0}),false);
+assert.equal(policy.tokenLabel({input_tokens:100,cache_read_input_tokens:900,cache_creation_input_tokens:40,output_tokens:12}),
+  "100 új be / 40 cache-írás / 900 cache-találat / 12 ki token");

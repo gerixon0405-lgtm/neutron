@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.10",
+    "title": "Takarékos Claude mód és hangos projektösszefoglaló",
+    "changes": [
+      "A Claude alapértelmezetten alacsony effortot és üzenetenkénti körkorlátot kap. A folytatás megőrzi a részleges eredményeket.",
+      "A Neutron nem próbálkozik újra elfogyott előfizetési kerettel, illetve nem küldi el újra automatikusan a már tokeneket felhasználó Claude-kérést.",
+      "A Claude háttérfeladatai külön kártyán jelennek meg állapottal, tokenadattal, eredménnyel és leállítási lehetőséggel.",
+      "Ha egy nagyobb projekt elkészül, miközben máshol jársz, a hangasszisztens a hozzá beállított modellel rövid összefoglalót készít és felolvassa."
+    ]
+  },
+  {
     "version": "1.3.9",
     "title": "Görgethető engedélyezési menü",
     "changes": [

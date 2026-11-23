@@ -35,15 +35,12 @@ process.env.PATH = [path.join(HOME, ".local/bin"), process.env.PATH].join(path.d
 // Variables leaked from a parent Claude Code session would redirect or reconfigure the child CLI.
 for (const k of Object.keys(process.env)) if (/^(CLAUDE|ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN)/.test(k)) delete process.env[k];
 
-// Headless Claude Code never fires ScheduleWakeup on its own, so Neutron does it (see renderer.js "wakeups").
-const WAKE_PROMPT = `You run inside the Neutron desktop app. Neutron really wakes you up later: if you must wait for something
-(a build, a download, a background process, a rate limit) or want to continue the task later, schedule it instead of only
-saying you will. Either call the ScheduleWakeup tool (delaySeconds + prompt saying what to continue), or end your reply with
-exactly one line: [[WAKEUP <seconds>: <what to continue>]]. When the time is up Neutron sends you a message and you continue.
-Never claim you will check back later without scheduling a wakeup.`;
+const WAKE_PROMPT = "Use ScheduleWakeup for a necessary follow-up only when the user explicitly requests autonomous continuation. Never poll or schedule retries for a subscription usage limit. Report work completed, checks run and any unfinished items.";
 
 const context = require("./chat-context");
 const hybrid = require("./nemotron-hybrid");
+const claudePolicy = require("./claude-session-policy");
+const claudeLimits = new Map();
 const {ScheduleStore} = require("./neutron-schedules");
 const {loginController,systemBootId} = require("./startup");
 const loginStartup=loginController(app);
@@ -251,13 +248,16 @@ function nemotronLanguage(model) {
   return /nemotron[-_. ]3[.-]5/i.test(model || "") || hybrid.ultra(model) ? "Magyar kérdésre természetes, helyes magyar mondatokban válaszolj. Ellenőrizd az ékezeteket, az egyeztetést és a szóválasztást. A magyar prózába ne keverj véletlen idegen írásjegyeket vagy angol töredékeket. Kódot, fájlneveket, tulajdonneveket és idézeteket pontosan őrizz meg." : "";
 }
 function claudeChatArgs(chat) {
+  const economy=claudePolicy.enabled(chat.provider,loadConfig().claudeEconomy);
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
     "--include-partial-messages", "--permission-prompt-tool", "stdio",
     "--permission-mode", chat.mode || "default", "--append-system-prompt",
-    [WAKE_PROMPT, spaces.guidance, nemotronLanguage(chat.model), characterPrompt(chat.character)].filter(Boolean).join("\n\n")];
+    [WAKE_PROMPT, economy && "Use the current session for routine work. Delegate only when explicitly requested or when one focused subagent materially saves work.", spaces.guidance, nemotronLanguage(chat.model), characterPrompt(chat.character)].filter(Boolean).join("\n\n")];
   args.push(...spaces.mcpArgs(chat));
   if (chat.model) args.push("--model", chat.model);
-  if (chat.effort) args.push("--effort", chat.effort);
+  const effort=claudePolicy.effort(chat.effort,economy);
+  if (effort) args.push("--effort",effort);
+  if(economy)args.push("--max-turns",String(claudePolicy.turnLimit),"--disallowedTools","ScheduleWakeup,CronCreate");
   const limit = context.compactTokens(chat.autoCompactTokens);
   if (limit && chat.provider!=="fcc") args.push("--autocompact",String(limit));
   return args;
@@ -271,10 +271,16 @@ function startSession(chat, projects) {
   const p = spawn(bin, fccEffortArgs(chat.provider,args), { cwd, env });
   p.neutronModel=chat.model;
   p.neutronMode=chat.mode;
+  p.neutronEconomy=claudePolicy.enabled(chat.provider,loadConfig().claudeEconomy);
   sessions.set(chat.id, p);
   readline.createInterface({ input: p.stdout }).on("line", (line) => {
     let ev;
     try { ev = JSON.parse(line); } catch { ev = { type: "raw", text: line }; }
+    if(ev && chat.provider!=="fcc"){
+      if(ev.type==="rate_limit_event" && ev.rate_limit_info?.status==="allowed")claudeLimits.delete(chat.provider);
+      const limit=claudePolicy.quota(ev.rate_limit_info,ev.is_error?[ev.result,ev.errors].filter(Boolean).join("\n"):"");
+      if(limit)claudeLimits.set(chat.provider,limit.reset || Date.now()+300000);
+    }
     if (ev?.type === "control_response" && ev.response?.request_id?.startsWith("neutron-context-")) {
       p.emit("neutron-control",ev.response);
       return;
@@ -309,7 +315,8 @@ function stopSession(id,notify=true) {
 
 function write(chat, obj, start = true, projects) {
   let p = sessions.get(chat.id);
-  if (!p || p.exitCode !== null || (start && (p.neutronModel!==chat.model || p.neutronMode!==chat.mode))) {
+  if (!p || p.exitCode !== null || (start && (p.neutronModel!==chat.model || p.neutronMode!==chat.mode ||
+    p.neutronEconomy!==claudePolicy.enabled(chat.provider,loadConfig().claudeEconomy)))) {
     if (!start) return;
     p = startSession(chat,projects);
   }
@@ -429,6 +436,19 @@ ipcMain.handle("voice:plan", async (_, { transcript, targets, history,shot,scree
   if (result.target && profile.cwd && !fs.statSync(profile.cwd,{throwIfNoEntry:false})?.isDirectory())
     throw Error("A mentett munkamappa nem érhető el. Válassz másikat az asszisztens beállításaiban.");
   return result;
+});
+ipcMain.handle("voice:summarize-project",async (_,report)=>{
+  const cfg=loadConfig(), profile=cfg.voiceAssistant;
+  if(!profile || profile.projectSummary===false)throw Error("A hangos projektösszefoglaló ki van kapcsolva.");
+  if(!["fcc","codex","default"].includes(profile.provider) && !cfg.accounts?.some(a=>a.id===profile.provider))
+    throw Error("Az asszisztenshez mentett fiók nem érhető el.");
+  if((claudeLimits.get(profile.provider) || 0)>Date.now())throw Error("A hangasszisztens Claude-kerete jelenleg elfogyott.");
+  let selected=profile.provider==="codex" && !profile.model ? {...profile,model:codex.models().defaultModel} : profile;
+  if(profile.provider==="fcc" && profile.model===hybrid.id)
+    selected={...profile,model:hybrid.route(await listModels(),"Összefoglaló").row.id};
+  const bounded={title:String(report?.title || "").slice(0,130),result:String(report?.result || "").slice(0,4800),
+    files:Array.isArray(report?.files)?report.files.slice(0,8).map(file=>String(file).slice(0,150)):[]};
+  return voice.summarize(selected,bounded,launchSpec(profile.provider));
 });
 ipcMain.handle("voice:bind", (_, trigger) => voice.bind(trigger, event => send("voice:event", event)));
 ipcMain.on("voice:speak", (_, text) => voice.speak(text, label => send("voice:event", {type:"error",label}), () => send("voice:event",{type:"spoken"}), bytes=>send("voice:event",{type:"audio",bytes})));

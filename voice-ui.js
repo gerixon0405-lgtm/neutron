@@ -89,6 +89,7 @@ function editAssistant() {
     ...accounts().map(a=>new Option("Claude · "+a.name,a.id)));
   $("#assistantProvider").value = voiceDraft.provider;
   fillVoiceModels(voiceDraft.model); $("#globalVoice").checked = voiceDraft.global; $("#voiceScreen").checked = !!voiceDraft.screen;
+  $("#voiceProjectSummary").checked = voiceDraft.projectSummary!==false;
   $("#voiceInfo").textContent = portalNote;
   speechSettings().catch(voiceError);
   previewAssistant(); voiceDialog.showModal();
@@ -131,7 +132,8 @@ $("#voiceForm").onsubmit = async e => {
   e.preventDefault();
   const name=$("#assistantName").value.trim(), provider=$("#assistantProvider").value, model=$("#assistantModel").value.trim();
   if (!name || !provider || (provider==="fcc" && !model)) {$("#voiceInfo").textContent="Adj meg nevet, szolgáltatót és elérhető modellt.";return;}
-  const next={...voiceDraft,name,provider,model,prompt:$("#assistantPrompt").value.trim(),screen:$("#voiceScreen").checked,global:$("#globalVoice").checked};
+  const next={...voiceDraft,name,provider,model,prompt:$("#assistantPrompt").value.trim(),screen:$("#voiceScreen").checked,
+    global:$("#globalVoice").checked,projectSummary:$("#voiceProjectSummary").checked};
   const before=cfg.voiceAssistant;
   try {
     await N.config.set({...cfg,voiceAssistant:next}); cfg.voiceAssistant=next; voiceHistory=[]; ownVoiceChat="";
@@ -299,12 +301,50 @@ function initVoice(){identity();if(assistant().global)bindVoice().catch(voiceErr
 if(chat) initVoice(); else addEventListener("neutron-ready",initVoice,{once:true});
 
 addEventListener("neutron-turn-ended",e=>{
-  const {id,turn}=e.detail;
+  const {id,turn,project}=e.detail;
   if(!voiceReplies.delete(id) || heldBy)return;
+  if(project && wantsProjectSummary(id))return;
   if(turn.meta==="Leállítva"){badge("Leállítva.");return;}
   const result=turn.blocks.filter(b=>b.type==="text" || b.type==="error").map(b=>b.text).join(" ").trim();
   if(result){const summary=result.length>550 ? result.slice(0,520)+"… A teljes választ a chatben találod." : result;
     badge(summary,"speaking");N.voice.speak(summary);} else badge("A művelet befejeződött.");
+});
+
+const projectSummaries=new Map();
+let projectSummaryTimer, summarizingProject=false;
+function wantsProjectSummary(id) {
+  return !!cfg.voiceAssistant && cfg.voiceAssistant.projectSummary!==false &&
+    (chat?.id!==id || view!=="chat" || document.hidden || !document.hasFocus());
+}
+function scheduleProjectSpeech() {
+  if(projectSummaryTimer || summarizingProject || !projectSummaries.size)return;
+  projectSummaryTimer=setTimeout(readProjectSummary,1800);
+}
+async function readProjectSummary() {
+  projectSummaryTimer=null;
+  for(const [id,item] of projectSummaries)
+    if(!wantsProjectSummary(id) || Date.now()-item.at>120000)projectSummaries.delete(id);
+  const next=[...projectSummaries.values()].find(item=>!live.has(item.id));
+  if(!next || heldBy || working || playback || hold.dataset.state==="speaking")return scheduleProjectSpeech();
+  projectSummaries.delete(next.id);
+  summarizingProject=true;
+  try {
+    const profile=cfg.voiceAssistant;
+    const result=next.turn.blocks.filter(b=>b.type==="text" || b.type==="claude-task")
+      .map(b=>b.type==="text"?b.text:b.output || b.summary || "").join("\n").replace(WAKE_RE,"").slice(-4800);
+    let speech;
+    try {speech=await N.voice.summarizeProject({title:next.title,files:next.files,result});}
+    catch {speech="Elkészült a következő munka: "+next.title+". Az eredményt a Neutronban találod.";}
+    if(wantsProjectSummary(next.id) && cfg.voiceAssistant===profile && !heldBy && !working && !live.has(next.id)){
+      badge(speech,"speaking");
+      N.voice.speak(speech);
+    }
+  }finally{summarizingProject=false;scheduleProjectSpeech();}
+}
+addEventListener("neutron-project-complete",event=>{
+  if(!wantsProjectSummary(event.detail.id))return;
+  projectSummaries.set(event.detail.id,{...event.detail,at:Date.now()});
+  scheduleProjectSpeech();
 });
 
 addEventListener("neutron-permission",e=>{
