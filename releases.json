@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.3.2",
+    "title": "Vesktop-kliens választása",
+    "changes": [
+      "A Discord-műveletek megnyithatók az alapértelmezett asztali kliensben vagy közvetlenül a Vesktopban.",
+      "A kliens kiválasztása a Beállítások → Discord lapon érhető el."
+    ]
+  },
+  {
     "version": "1.3.1",
     "title": "Discord asztali integráció",
     "changes": [

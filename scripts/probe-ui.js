@@ -146,6 +146,7 @@ async function connect() {
       if(saved.appearance?.theme!=='mint' || !saved.appearance?.sound || !saved.seenRelease) return false;
       document.querySelector('#accBtn').click();
       document.querySelector('[data-settings=discord]').click();
+      if(!document.querySelector('#discordClient option[value=vesktop]')) return false;
       if(document.querySelector('#discordToken').type!=='password' || document.querySelector('#discordToken').closest('section').hidden) return false;
       paintDiscord({bot:{id:'1',name:'Neutron teszt'},actions:[{id:'test',bot:'1',kind:'message',state:'pending',
         payload:{kind:'dm',label:'Teszt címzett',target:'123',text:'Jóváhagyandó üzenet'}}]});

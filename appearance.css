@@ -305,3 +305,7 @@ body { background: radial-gradient(ellipse at 56% -24%, var(--tint), var(--bg) 6
 .discord-card .discord-plan { margin:7px 0; max-height:220px; overflow:auto; }
 .discord-plan,.discord-plan ul { padding-left:18px; color:var(--muted); font-size:13px; }
 .discord-review { margin:6px 0; color:var(--a2); background:var(--tint); }
+
+#settingsDialog .discord-client-label { margin:10px 0; max-width:300px; }
+.discord-client-label select { padding:7px 8px; border:1px solid var(--line-2); border-radius:8px;
+  font:inherit; color:var(--ink); background:var(--bg); }

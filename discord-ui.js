@@ -51,7 +51,7 @@ function paintDiscord(state) {
     if(action.result?.error)discordLine(card,action.result.error,"p");
     if(action.result?.created)discordLine(card,`Létrehozva: ${action.result.created.length} · Meglévőként megtartva: ${action.result.kept.length}`,"p");
     if(action.result?.guild || action.result?.channel){
-      card.append(settingsButton("Megnyitás a Discordban",()=>N.discord.open(action.result.guild,action.result.channel,action.result.message)));
+      card.append(settingsButton("Megnyitás a Discordban",()=>openDiscordClient(action.result.guild,action.result.channel,action.result.message)));
     }
     discordActions.append(card);
     if(action.id===discordFocus){heading.focus();discordFocus=null;}
@@ -84,7 +84,15 @@ function openDiscordReview(id){
   if(!settingsDialog.open)$("#accBtn").click();
   discordTab.click();
 }
+function openDiscordClient(guild,channel,message){
+  return N.discord.open(guild,channel,message,$("#discordClient").value);
+}
+$("#discordClient").onchange=event=>{
+  cfg.discordClient=event.target.value;
+  N.config.set(cfg).catch(error=>toast(error.message,true));
+};
 discordTab.addEventListener("click",()=>{
+  $("#discordClient").value=cfg.discordClient==="vesktop"?"vesktop":"system";
   clearInterval(discordPoll);refreshDiscord(true);
   discordPoll=setInterval(()=>{
     if(!settingsDialog.open || settingsTab!=="discord"){clearInterval(discordPoll);return;}
@@ -102,6 +110,6 @@ $("#discordDisconnect").onclick=()=>{
   if(confirm("Leválasztod a Discord-botot? A függő kéréseit elutasítjuk."))
     discordOperation(()=>N.discord.disconnect(),"A bot leválasztása…");
 };
-$("#discordOpen").onclick=()=>N.discord.open("@me").catch(error=>toast(error.message,true));
+$("#discordOpen").onclick=()=>openDiscordClient("@me").catch(error=>toast(error.message,true));
 $("#discordPortal").onclick=()=>N.discord.portal().catch(error=>toast(error.message,true));
 $("#discordInvite").onclick=()=>{if(discordBot)N.discord.invite(discordBot.id).catch(error=>toast(error.message,true));};

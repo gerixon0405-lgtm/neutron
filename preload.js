@@ -41,7 +41,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     decide:(id,approve)=>ipcRenderer.invoke("discord:decide",id,approve),
     portal:()=>ipcRenderer.invoke("discord:portal"),
     invite:id=>ipcRenderer.invoke("discord:invite",id),
-    open:(guild,channel,message)=>ipcRenderer.invoke("discord:open",guild,channel,message),
+    open:(guild,channel,message,client)=>ipcRenderer.invoke("discord:open",guild,channel,message,client),
   },
   spotify: {
     status:()=>ipcRenderer.invoke("spotify:status"),
