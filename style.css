@@ -142,14 +142,15 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 
 /* ---------- popover menus ---------- */
 .pop {
-  position: fixed; z-index: 50; min-width: 260px; max-width: 460px; max-height: 60vh; overflow: auto; padding: 6px;
+  position: fixed; z-index: 50; min-width: min(260px, 100vw - 16px); max-width: min(460px, 100vw - 16px); max-height: 60vh;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 6px;
   background: rgba(18, 18, 34, .92); backdrop-filter: blur(24px); border: 1px solid var(--line-2); border-radius: 14px;
   box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .8); transform-origin: top; animation: popIn .28s var(--ease);
 }
 .pop input { width: 100%; margin-bottom: 6px; padding: 8px 10px; border-radius: 9px; background: rgba(0, 0, 0, .35); border: 1px solid var(--line); color: var(--ink); outline: none; font: 13px var(--font); }
 .pop .opt { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 9px; font-size: 13px; color: var(--muted); }
 .pop .opt b { color: var(--ink); font-weight: 500; }
-.pop .opt small { display: block; color: var(--dim); font-size: 11.5px; }
+.pop .opt small { display: block; color: var(--dim); font-size: 11.5px; overflow-wrap: anywhere; }
 .pop .opt:hover, .pop .opt.sel { background: rgba(139, 92, 246, .22); color: var(--ink); }
 .pop .opt.cur b::after { content: " ✓"; color: var(--a2); }
 @keyframes popIn { from { opacity: 0; transform: translateY(-6px) scale(.96); } }

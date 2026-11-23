@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.3.9",
+    "title": "Görgethető engedélyezési menü",
+    "changes": [
+      "A chat alján megnyitott engedélyezési menü felfelé nyílik, az ablakon belül marad, és az összes opciója görgethető."
+    ]
+  },
+  {
     "version": "1.3.8",
     "title": "Külön AppImage-mappa automatikus indításhoz",
     "changes": [

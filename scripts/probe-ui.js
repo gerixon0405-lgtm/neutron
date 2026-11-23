@@ -85,6 +85,32 @@ async function connect() {
       return visible && document.querySelector('#effortBar').hidden && opened;
     })()`);
     if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+    await evaluate(`(()=>{
+      chat.extraDirs=Array.from({length:20},(_,i)=>home+'/popup-folder-'+i);
+      document.querySelector('#modeChip').click();
+    })()`);
+    await wait("document.querySelector('.pop')?.querySelectorAll('button.opt').length===25");
+    await pause(320);
+    const menu = await evaluate(`(()=>{
+      const root=document.querySelector('.pop'), rect=root.getBoundingClientRect();
+      const anchor=document.querySelector('#modeChip').getBoundingClientRect();
+      return {x:rect.left+rect.width/2,y:rect.top+rect.height/2,
+        inBounds:rect.top>=0 && rect.bottom<anchor.top && rect.right<=innerWidth && root.scrollHeight>root.clientHeight};
+    })()`);
+    if(!menu.inBounds)throw Error("Permission menu is clipped or does not scroll");
+    await call("Input.dispatchMouseEvent",{type:"mouseWheel",x:menu.x,y:menu.y,deltaY:2500,deltaX:0});
+    await wait(`(()=>{
+      const p=document.querySelector('.pop'), last=p.querySelector('.opt:last-child');
+      return p.scrollTop>0 && last.getBoundingClientRect().bottom<=p.getBoundingClientRect().bottom;
+    })()`);
+    const option = await evaluate(`(()=>{
+      const r=document.querySelector('.pop .opt:last-child').getBoundingClientRect();
+      return {x:r.left+r.width/2,y:r.top+r.height/2};
+    })()`);
+    await call("Input.dispatchMouseEvent",{type:"mousePressed",...option,button:"left",clickCount:1});
+    await call("Input.dispatchMouseEvent",{type:"mouseReleased",...option,button:"left",clickCount:1});
+    await wait("!document.querySelector('.pop') && chat.extraDirs.length===19");
+    await evaluate("chat.extraDirs=[];save(chat)");
     await evaluate(`document.querySelector('#dirChip').click()`);
     await wait("!document.querySelector('#contextPane').hidden && document.querySelector('.context-folder')");
     const context=await evaluate(`(()=>{

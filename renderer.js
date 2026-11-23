@@ -975,10 +975,16 @@ function popover(anchor, { items, search, onPick, current, up }) {
   p.className = "pop";
   document.body.append(p);
   popEl = p;
-  const r = anchor.getBoundingClientRect();
-  p.style.left = Math.min(r.left, innerWidth - 470) + "px";
-  if (up) { p.style.bottom = innerHeight - r.top + 8 + "px"; p.style.transformOrigin = "bottom"; }
-  else p.style.top = r.bottom + 8 + "px";
+  p.place = () => {
+    const r = anchor.getBoundingClientRect(), gap = 8;
+    const above = r.top - gap * 2, below = innerHeight - r.bottom - gap * 2;
+    const opensUp = above > 0 && (up || below < above);
+    p.style.maxHeight = Math.max(0, Math.min(innerHeight * .6, opensUp ? above : below)) + "px";
+    p.style.top = opensUp ? "" : r.bottom + gap + "px";
+    p.style.bottom = opensUp ? innerHeight - r.top + gap + "px" : "";
+    p.style.transformOrigin = opensUp ? "bottom" : "top";
+    p.style.left = Math.max(gap, Math.min(r.left, innerWidth - p.offsetWidth - gap)) + "px";
+  };
   let sel = 0, shown = items;
   const draw = (q = "") => {
     const rows = [];
@@ -993,17 +999,17 @@ function popover(anchor, { items, search, onPick, current, up }) {
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     list.innerHTML = "";
     let n = -1;
-    rows.slice(0, 260).forEach((i) => {
+    rows.forEach((i) => {
       if (i.header) { list.insertAdjacentHTML("beforeend", `<div class="grp">${esc(i.label)}</div>`); return; }
       n++;
       const o = document.createElement("button");
       o.className = "opt" + (i.value === current ? " cur" : "") + (n === sel ? " sel" : "");
       o.innerHTML = `<b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}`;
-      // stopPropagation: otherwise the window "click outside" handler closes a popover that onPick just opened
-      o.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); closePop(); onPick(i.value); };
+      o.onclick = () => { closePop(); onPick(i.value); };
       list.append(o);
     });
     if (!shown.length) list.innerHTML = `<div class="opt"><small>${!items.length ? "Írd be, majd nyomj Entert" : `Nincs találat${search ? " — Enter: használd ezt a nevet" : ""}`}</small></div>`;
+    p.place();
   };
   let input = null;
   if (search) {
@@ -1075,6 +1081,7 @@ $("#modeChip").onclick = () => {
   const target = chat;
   const cx = target.provider === "codex";
   popover($("#modeChip"), {
+    up:true,
     items: Object.entries(cx ? { "read-only": "Csak olvasás", "workspace-write": "A munkamappa szerkesztése" } : MODES)
       .map(([value, label]) => ({ value, label })).concat(
         [{value:"add-folder",label:"Mappa vagy meghajtó hozzáadása…"}],
@@ -1539,7 +1546,7 @@ addEventListener("keydown", (e) => {
   else if (e.ctrlKey && e.key === "`") { e.preventDefault(); setView(view === "chat" ? "term" : "chat"); }
   else if (e.key === "Escape" && view === "chat" && !popEl) stop();
 });
-addEventListener("resize", movePill);
+addEventListener("resize", () => { movePill(); popEl?.place(); });
 
 // ---------- boot ----------
 addEventListener("DOMContentLoaded", async function boot() {
