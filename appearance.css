@@ -186,3 +186,41 @@ body { background: radial-gradient(ellipse at 56% -24%, var(--tint), var(--bg) 6
 #effortSlider::-webkit-slider-thumb { width:16px; height:16px; margin-top:-2px; border:2px solid var(--surface); background:var(--ink); box-shadow:0 1px 6px #0008; position:relative; z-index:2; }
 #effortTicks { position:absolute; inset:0 8px; display:flex; justify-content:space-between; align-items:center; pointer-events:none; }
 #effortTicks i { display:block; width:3px; height:3px; border-radius:50%; background:var(--ink); opacity:.38; }
+
+/* Chat toolbar and workspace navigation */
+.composer { border-radius:24px; }
+.composer-inner { display:grid; gap:5px; padding:11px 12px 8px; border-radius:22px; }
+.composer textarea { width:100%; min-height:29px; padding:4px 6px; }
+.composer-toolbar { display:flex; align-items:center; gap:4px; min-width:0; }
+.composer-toolbar .chip { min-width:0; max-width:36%; border-color:transparent; background:transparent; border-radius:9px; padding:5px 8px; }
+.composer-toolbar .chip:hover,.composer-toolbar .icon-btn:hover { background:var(--tint); }
+.composer-toolbar #modelChip { max-width: min(205px,32%); }
+.composer-toolbar #effortChip { max-width:none; white-space:nowrap; color:var(--a2); }
+.composer-toolbar .send { width:34px; height:34px; min-width:34px; border-radius:50%; margin-left:3px; }
+.composer-toolbar .icon-btn { width:32px; height:32px; flex:none; }
+.composer-voice { touch-action:none; }
+.composer-voice:is([data-state="recording"],[data-state="working"],[data-state="speaking"]) {
+  color:var(--a2); background:var(--tint); box-shadow:0 0 13px var(--glow); animation:pulse 1.8s ease-in-out infinite;
+}
+#voiceStatus:not([hidden]) { display:block; color:var(--muted); margin:5px 8px 0; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+.effort-control { position:relative; }
+#effortBar:not([hidden]) {
+  position:absolute; right:0; bottom:calc(100% + 12px); width:194px; z-index:6;
+  background:var(--surface); box-shadow:0 12px 36px #0008; animation:surface-in .2s ease-out both;
+}
+.sidebar-settings { display:flex; align-items:center; gap:10px; width:100%; border-radius:10px; padding:7px 10px; color:var(--ink); }
+.sidebar-settings:hover { background:var(--tint); }
+.settings-glyph { display:grid; place-items:center; width:25px; height:25px; background:var(--tint); border-radius:8px; }
+#projectHubBtn { max-width:180px; }
+#projectHub .project-bar { margin:0; }
+.sidebar .chat-list { padding-inline:8px; }
+.sidebar .side-foot { padding:11px 12px; }
+
+#speechDetails { margin-top:13px; padding:10px 12px; background:var(--tint); border:1px solid var(--line); border-radius:11px; }
+#speechDetails summary { cursor:pointer; font-size:13px; }
+#speechDetails p { color:var(--muted); margin:7px 0; font-size:12px; }
+#speechDetails .dialog-actions { margin-top:10px; justify-content:flex-start; }
+.composer::before { border-radius:24px; pointer-events:none; }
+.composer:focus-within { box-shadow:0 0 0 3px var(--glow); }
+.composer:not(.busy):focus-within::before { opacity:.24; animation:none; }
+#projectHub .project-bar select { background:var(--bg); }

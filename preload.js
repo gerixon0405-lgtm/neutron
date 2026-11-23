@@ -32,7 +32,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
   mail: {
     status: batch=>ipcRenderer.invoke("mail:status",batch || ""), cancel: id=>ipcRenderer.invoke("mail:cancel",id),
     smtp: (email,password)=>ipcRenderer.invoke("mail:smtp",email,password), oauth: ()=>ipcRenderer.invoke("mail:oauth"),
-    disconnect: ()=>ipcRenderer.invoke("mail:disconnect"), passwordPage: ()=>ipcRenderer.invoke("mail:password-page"),
+    disconnect: sender=>ipcRenderer.invoke("mail:disconnect",sender), select:sender=>ipcRenderer.invoke("mail:select",sender), passwordPage: ()=>ipcRenderer.invoke("mail:password-page"),
   },
   config: { get: () => ipcRenderer.invoke("config:get"), set: (c) => ipcRenderer.invoke("config:set", c) },
   chats: {
@@ -46,6 +46,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     models: () => ipcRenderer.invoke("fcc:models"),
     admin: () => ipcRenderer.invoke("fcc:admin"),
   },
+  speech: {settings:()=>ipcRenderer.invoke("speech:settings"),connect:values=>ipcRenderer.invoke("speech:connect",values),disconnect:()=>ipcRenderer.invoke("speech:disconnect")},
   voice: {
     hud: state => ipcRenderer.send("voice:hud", state),
     snapshot: () => ipcRenderer.invoke("voice:snapshot"),

@@ -19,3 +19,9 @@ A megjelenést, a nevet és a hangjelzéseket a **Beállítások → Megjelenés
 ### Spotify-playlistek
 
 A dalok eltávolítását, a listák átnevezését és a könyvtárból való eltávolításukat a **Beállítások → Kapcsolatok** alatt bekapcsolható Spotify Web API végzi. A módosítások a szokásos Spotify desktop kliensben is megjelennek. Saját alkalmazás használatakor hozz létre egy alkalmazást a [Spotify fejlesztői felületén](https://developer.spotify.com/dashboard), add hozzá a `http://127.0.0.1:47812/callback` címet, majd add meg a Client ID-t a Neutronban. A Spotify a fejlesztői módú alkalmazás tulajdonosától Premium előfizetést kér. A lejátszás meglévő helyi vezérlése külön működik.
+
+### Magyar hang
+
+Helyi beszédfelismeréshez a Neutron előnyben részesíti a többnyelvű Whisper large-v3-turbo Q5, large-v3-turbo és medium modelleket a small előtt. A `NEUTRON_WHISPER_BIN` és `NEUTRON_WHISPER_MODEL` változóval saját telepítés is megadható. A Piper neurális magyar felolvasó az Anna modellt a `~/.local/share/neutron/speech` mappában keresi. Egyéni futtató és hangmodell a `NEUTRON_PIPER_BIN` és `NEUTRON_PIPER_MODEL` változókkal állítható be.
+
+A Hangasszisztens párbeszédablakban opcionálisan Azure Speech-erőforrást állíthatsz be Noémi vagy Tamás hangjával. Ilyenkor a felvétel és a felolvasandó szöveg a Microsoft Speech szolgáltatáshoz kerül. A kulcsot a Neutron a rendszer titkosításával tárolja. Az Azure-kapcsolat leválasztásakor a helyi feldolgozás áll vissza.

@@ -3,7 +3,7 @@ const voiceDialog = $("#voiceDialog");
 const hold = $("#voiceHold");
 let voiceDraft, capturingKey = false, globalKey = "", portalNote = "", imageVersion = 0;
 let heldBy = "", recorder, recordTimer, captureVersion = 0, working = false;
-let voiceHistory = [], ownVoiceChat = "";
+let voiceHistory = [], ownVoiceChat = "", playback;
 const voiceReplies = new Set();
 
 function assistant() {
@@ -14,13 +14,12 @@ const mouseNames = {Mouse4: "Egér 4 (vissza)", Mouse5: "Egér 5 (előre)"};
 function keyName(key) { return mouseNames[key] || key.replace("CTRL","Ctrl").replace("ALT","Alt").replace("SHIFT","Shift").replace("LOGO","Super").replace("space","Szóköz"); }
 function badge(message, state = "idle") {
   hold.dataset.state = state;
-  $("#voiceStatus").textContent = message || keyName(globalKey || assistant().key);
+  $("#voiceStatus").textContent = message;
+  $("#voiceStatus").hidden = !message;
   hold.title = message || "Tartsd nyomva a beszédhez";
   N.voice.hud(message ? {state,text:message,name:assistant().name,avatar:assistant().avatar} : null);
 }
 function identity() {
-  $("#voiceName").textContent = assistant().name;
-  $("#voiceIcon").innerHTML = portrait(assistant());
   badge("");
 }
 function voiceError(error) {
@@ -36,6 +35,50 @@ function previewAssistant() {
   $("#recordKey").textContent = capturingKey ? "Nyomd meg az új gombot…" : keyName(voiceDraft.key);
   $("#voiceFolder").textContent = voiceDraft.cwd || "Mappa kiválasztása…";
 }
+async function speechSettings(){
+  const settings=await N.speech.settings();
+  $("#speechResource").value=settings.resource;
+  $("#speechKey").value="";
+  $("#ttsVoice").value=settings.voice;
+  $("#speechDisconnect").hidden=$("#speechSample").hidden=!settings.connected;
+  $("#speechConnect").disabled=!settings.canStore;
+  $("#speechStatus").textContent=settings.connected?"A magyar neurális hang és beszédfelismerés bekapcsolva.":
+    settings.canStore?"A helyi hangfeldolgozás aktív.":"Az Azure-kulcs tárolásához a rendszer kulcstartója szükséges.";
+}
+$("#speechConnect").onclick=async()=>{
+  const key=$("#speechKey").value;
+  $("#speechKey").value="";
+  try {
+    await N.speech.connect({resource:$("#speechResource").value,key,voice:$("#ttsVoice").value});
+    await speechSettings();
+  }catch(error){$("#speechStatus").textContent=error.message;}
+};
+$("#speechDisconnect").onclick=()=>N.speech.disconnect().then(speechSettings).catch(voiceError);
+$("#speechSample").onclick=()=>N.voice.speak("Szia! Én vagyok a Neutron magyar hangasszisztense. Miben segíthetek?");
+
+function stopPlayback(){
+  if(!playback)return;
+  playback.player.pause();URL.revokeObjectURL(playback.url);playback=null;
+}
+function playSpeech(bytes){
+  stopPlayback();
+  const url=URL.createObjectURL(new Blob([bytes],{type:"audio/wav"})), player=new Audio(url);
+  playback={url,player};
+  player.onended=()=>{if(playback?.player===player){stopPlayback();if(hold.dataset.state==="speaking")badge("");}};
+  player.play().catch(error=>{if(playback?.player===player){stopPlayback();voiceError(error);}});
+}
+
+async function recordingBytes(chunks) {
+  const recorded=await new Blob(chunks).arrayBuffer();
+  const context=new AudioContext();
+  try{
+    const decoded=await context.decodeAudioData(recorded.slice(0));
+    const offline=new OfflineAudioContext(1,Math.max(1,Math.round(decoded.duration*16000)),16000);
+    const source=offline.createBufferSource();source.buffer=decoded;source.connect(offline.destination);source.start();
+    return pcm16Wave((await offline.startRendering()).getChannelData(0));
+  } catch { return new Uint8Array(recorded); }
+  finally{await context.close();}
+}
 function editAssistant() {
   if (working || heldBy) return toast("Várd meg az aktuális hangkérés végét.");
   voiceDraft = {...assistant()}; capturingKey = false; imageVersion++;
@@ -46,7 +89,8 @@ function editAssistant() {
     ...accounts().map(a=>new Option("Claude · "+a.name,a.id)));
   $("#assistantProvider").value = voiceDraft.provider;
   fillVoiceModels(voiceDraft.model); $("#globalVoice").checked = voiceDraft.global; $("#voiceScreen").checked = !!voiceDraft.screen;
-  $("#voiceInfo").textContent = portalNote || "A hangfelismerés és a felolvasás ezen a gépen történik.";
+  $("#voiceInfo").textContent = portalNote;
+  speechSettings().catch(voiceError);
   previewAssistant(); voiceDialog.showModal();
 }
 $("#voiceSettings").onclick = editAssistant;
@@ -140,7 +184,7 @@ async function beginVoice(source) {
   heldBy=source; N.voice.silence(); badge("Mikrofon megnyitása…","starting");
   let stream, rec;
   try {
-    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:false});
     if(version!==captureVersion || !heldBy){stream.getTracks().forEach(t=>t.stop());return;}
     rec=new MediaRecorder(stream); const chunks=[];
     rec.ondataavailable=e=>{if(e.data.size) chunks.push(e.data);};
@@ -151,13 +195,13 @@ async function beginVoice(source) {
       recorder=null;heldBy="";clearTimeout(recordTimer);working=true;
       try{
         badge("Beszédfelismerés…","working");
-        const bytes=new Uint8Array(await new Blob(chunks).arrayBuffer());
+        const bytes=await recordingBytes(chunks);
         const [text,capture]=await Promise.all([N.voice.transcribe(bytes),assistant().screen ? N.voice.snapshot().then(id=>({id})).catch(()=>({error:true})) : Promise.resolve({})]);
         await answerVoice(text,capture.id,!!capture.error);
       }catch(err){voiceError(err);}finally{working=false;}
     };
     rec.start();recorder=rec;badge("Hallgatlak…","recording");
-    recordTimer=setTimeout(()=>endVoice(source),90000);
+    recordTimer=setTimeout(()=>endVoice(source),55000);
   }catch(err){
     stream?.getTracks().forEach(t=>t.stop());
     if(version===captureVersion){heldBy="";voiceError(err.name==="NotAllowedError"?"A mikrofon használatához engedély szükséges.":err);}
@@ -175,6 +219,13 @@ function cancelCapture(){
   recorder?.stream.getTracks().forEach(t=>t.stop());recorder=null;badge("");
 }
 hold.onpointerdown=e=>{if(e.button===0){hold.setPointerCapture(e.pointerId);beginVoice("button");}};
+hold.onkeydown=event=>{
+  if(event.key===" " || event.key==="Enter"){event.preventDefault();if(!event.repeat)beginVoice("button-key");}
+};
+hold.onkeyup=event=>{
+  if(event.key===" " || event.key==="Enter"){event.preventDefault();endVoice("button-key");}
+};
+hold.onblur=()=>endVoice("button-key");
 hold.onpointerup=()=>endVoice("button");hold.onpointercancel=()=>{if(heldBy==="button")cancelCapture();};
 let consumedMouse = "";
 function sideButton(e) {
@@ -230,6 +281,8 @@ async function bindVoice(){
   await N.voice.bind(assistant().global ? assistant().key : null);
 }
 N.voice.onEvent(e=>{
+  if(e.type==="audio"){playSpeech(e.bytes);return;}
+  if(e.type==="silence"){stopPlayback();return;}
   if(e.type==="down")beginVoice("global");
   if(e.type==="up")endVoice("global");
   if(e.type==="cancel" && heldBy==="global")cancelCapture();

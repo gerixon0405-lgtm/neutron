@@ -5,9 +5,10 @@ const path = require("path");
 const { execFile, spawn } = require("child_process");
 const readline = require("readline");
 const codex = require("./codex");
+const cloud = require("./speech-cloud");
 
 const active = new Set();
-let speaker, shortcuts;
+let speaker, speechRequest, shortcuts;
 function command(bin, args, options, input) {
   return new Promise((resolve, reject) => {
     const child = execFile(bin, args, { maxBuffer: 2 * 1024 * 1024, timeout: 120000, ...options }, (err, out, stderr) => {
@@ -26,21 +27,26 @@ async function transcribe(bytes) {
   if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 8*1024*1024)
     throw Error("Üres vagy túl hosszú hangfelvétel.");
   const base = path.join(os.homedir(), ".cache/hyperframes/whisper");
-  const model = process.env.NEUTRON_WHISPER_MODEL || path.join(base, "models/ggml-small.bin");
+  const model = process.env.NEUTRON_WHISPER_MODEL || ["large-v3-turbo-q5_0","large-v3-turbo","medium","small"].map(name=>path.join(base,`models/ggml-${name}.bin`)).find(file=>fs.existsSync(file));
   const cached = path.join(base, "whisper.cpp/build/bin/whisper-cli");
   const cli = process.env.NEUTRON_WHISPER_BIN || (fs.existsSync(cached) ? cached : "whisper-cli");
-  if (!fs.existsSync(model)) throw Error("A magyar Whisper-modell nem található. Állítsd be a NEUTRON_WHISPER_MODEL útvonalat.");
+
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "neutron-speech-"));
   try {
     const wav = path.join(dir, "voice.wav");
-    await command("ffmpeg", ["-v","error","-i","pipe:0","-t","90","-ar","16000","-ac","1","-c:a","pcm_s16le",wav], {}, bytes);
+    const input=Buffer.from(bytes);
+    if (input.toString("ascii",0,4)==="RIFF" && input.toString("ascii",8,12)==="WAVE") fs.writeFileSync(wav,input);
+    else await command("ffmpeg", ["-v","error","-i","pipe:0","-t","55","-ar","16000","-ac","1","-c:a","pcm_s16le",wav], {}, bytes);
     const pcm = fs.readFileSync(wav);
     const data = pcm.indexOf("data", 12) + 8;
     let loud = 0;
     for (let i = data; i + 1 < pcm.length; i += 2)
       if (Math.abs(pcm.readInt16LE(i)) > 140) loud++;
     if (data < 8 || loud < 500) throw Error("Nem hallottam beszédet. Próbáld újra.");
-    const text = await command(cli, ["-m",model,"-l","hu","-nt","-np","--prompt",
+    const online=await cloud.transcribe(pcm);
+    if (online!==null)return online;
+    if (!model || !fs.existsSync(model)) throw Error("A helyi Whisper-modell nem található. Állítsd be a modell útvonalát vagy kapcsold be az Azure Speech-et.");
+    const text = await command(cli, ["-m",model,"-l","hu","-nt","-np","--beam-size","5","--prompt",
       "Magyar beszélgetés. Nevek és kifejezések: Neutron, Codex, Claude, Sonnet, Opus, Fable, Minecraft, mod, modell, új chat, részletes prompt.", "-f",wav], {});
     if (!text || /^\s*[[(].*?[\])]\s*$/.test(text)) throw Error("Nem hallottam beszédet. Próbáld újra.");
     return text;
@@ -92,16 +98,41 @@ Felhasználó: ${transcript}`;
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 }
 
-function silence() { if (speaker) { speaker.kill(); speaker = null; } }
-function speak(text, onError,onDone) {
+function silence() {
+  speechRequest?.abort();speechRequest=null;
+  if (speaker) { const p=speaker;speaker=null;p.kill(); }
+}
+async function speak(text, onError,onDone,onAudio) {
   silence();
-  const p = spawn(runtime.win?"powershell.exe":"espeak-ng", runtime.win?["-NoProfile","-NonInteractive","-Command","[Console]::InputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Speech; $v=New-Object System.Speech.Synthesis.SpeechSynthesizer; $v.Speak([Console]::In.ReadToEnd())"]:["-v","hu","-s","168","--stdin"], {stdio:["pipe","ignore","ignore"]});
+  const payload=String(text).slice(0,8000);
+  const piperModel=process.env.NEUTRON_PIPER_MODEL || path.join(os.homedir(),".local/share/neutron/speech/hu_HU-anna-medium.onnx");
+  const piper=process.env.NEUTRON_PIPER_BIN || runtime.binary("piper");
+  if (cloud.config() || fs.existsSync(piperModel)){
+    const request=new AbortController();
+    speechRequest=request;
+    try {
+      let bytes=await cloud.speak(payload,request.signal);
+      if(bytes===null){
+        const dir=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-tts-"));
+        try{
+          const wav=path.join(dir,"voice.wav"), input=path.join(dir,"text.txt");
+          fs.writeFileSync(input,payload,{mode:0o600});
+          await command(piper,["-m",piperModel,"-f",wav,"--input-file",input],{signal:request.signal});
+          bytes=new Uint8Array(fs.readFileSync(wav));
+        }finally{fs.rmSync(dir,{recursive:true,force:true});}
+      }
+      if(speechRequest===request && bytes)onAudio(bytes);
+    } catch(error){ if(speechRequest===request)onError(error.message); }
+    finally { if(speechRequest===request)speechRequest=null; }
+    return;
+  }
+  const p = spawn(runtime.win?"powershell.exe":"espeak-ng", runtime.win?["-NoProfile","-NonInteractive","-Command","[Console]::InputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Speech; $v=New-Object System.Speech.Synthesis.SpeechSynthesizer; $hu=$v.GetInstalledVoices() | Where-Object {$_.Enabled -and $_.VoiceInfo.Culture.Name -eq 'hu-HU'} | Select-Object -First 1; if($hu){$v.SelectVoice($hu.VoiceInfo.Name)}; $v.Rate=-1; $v.Speak([Console]::In.ReadToEnd())"]:["-v","hu","-s","153","-p","44","--stdin"], {stdio:["pipe","ignore","ignore"]});
   speaker = p;
   p.once("error", () => onError("A magyar felolvasót nem sikerült elindítani."));
   p.once("close", code => {
     if (speaker === p) { speaker = null; if (code) onError("A hangkimenet nem érhető el."); else onDone?.(); }
   });
-  p.stdin.on("error", () => {}); p.stdin.end(String(text).slice(0,8000));
+  p.stdin.on("error", () => {}); p.stdin.end(payload);
 }
 
 function bind(trigger, emit) {

@@ -32,3 +32,28 @@ class Mail(TestCase):
             self.assertTrue(box.step(db))
             self.assertFalse(box.step(db))
         self.assertEqual(box.cancel(batch["id"])["counts"],{"cancelled":1})
+
+    def test_multiple_senders_keep_their_own_queue(self):
+        box.connect({"email":"other@example.org","method":"smtp"})
+        first=box.enqueue(["x@example.org"],"X","Y","scope")
+        second=box.enqueue(["x@example.org"],"X","Y","scope","other@example.org")
+        box.select("other@example.org")
+        self.assertEqual(box.status()["email"],"other@example.org")
+        self.assertNotEqual(first["id"],second["id"])
+        with patch.object(gmail,"deliver") as sent,box.database() as db:
+            while box.step(db): pass
+        self.assertEqual([call.args[0]["email"] for call in sent.call_args_list],
+                         ["sender@example.org","other@example.org"])
+        box.disconnect("other@example.org")
+        self.assertEqual(box.status()["email"],"sender@example.org")
+
+    def test_migrate_single_account(self):
+        import sqlite3
+        from contextlib import closing
+        with TemporaryDirectory() as directory,patch.object(box,"ROOT",Path(directory)):
+            with closing(sqlite3.connect(Path(directory)/"outbox.db")) as db,db:
+                db.execute("CREATE TABLE account(singleton INTEGER, email TEXT,slot TEXT,method TEXT,resume_at REAL,note TEXT,needs_login INTEGER)")
+                db.execute("INSERT INTO account VALUES(1,'old@example.org','oldslot','oauth',0,'',0)")
+            self.assertEqual(box.status()["email"],"old@example.org")
+            box.disconnect("old@example.org")
+            self.assertFalse(box.status()["accounts"])

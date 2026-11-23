@@ -71,6 +71,19 @@ async function connect() {
     }
     await wait("document.querySelector('.hero h2')?.textContent.includes('Dani') && document.documentElement.dataset.motion==='reduced'");
     await screenshot("home");
+    const toolbar=await evaluate(`(()=>{
+      if(!document.querySelector('#composer').contains(document.querySelector('#modelChip')))return false;
+      chat.provider="default";chat.model="opus";renderEffort();
+      document.querySelector('#effortChip').click();
+      const visible=!document.querySelector('#effortBar').hidden;
+      document.querySelector('#effortSlider').dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
+      document.querySelector('#projectHubBtn').click();
+      const hub=document.querySelector('#projectHub'), opened=hub.open && hub.contains(document.querySelector('#projectSelect'));
+      hub.close();
+      return visible && document.querySelector('#effortBar').hidden && opened;
+    })()`);
+    if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+
     const fixtures=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-drop-"));
     try{
       const filename=path.join(fixtures,"jegyzet.txt");

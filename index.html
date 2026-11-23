@@ -2,7 +2,7 @@
 <html lang="hu">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src neutron-artifact:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; media-src 'self' blob:; frame-src neutron-artifact:">
 <title>Neutron</title>
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
@@ -20,7 +20,6 @@
       <img width="44" height="44" src="icon.png" alt="">
       <div><h1>Neutron</h1><small>AI-munkatér</small></div>
     </div>
-    <div class="project-bar"><label for="projectSelect">Projekt</label><div><select id="projectSelect" aria-label="Aktív projekt"></select><button class="btn" id="projectFolder" title="Projektmappa megnyitása" aria-label="Projektmappa megnyitása" hidden>↗</button><button class="btn" id="createProject" title="Új projekt" aria-label="Új projekt">＋</button></div></div>
     <button class="new-chat" id="newChat">
       <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       Új csevegés <kbd>Ctrl+N</kbd>
@@ -29,7 +28,6 @@
       <button class="btn" id="charactersBtn">Karakterek</button>
       <button class="btn" id="voiceSettings">Hangasszisztens</button>
     </div>
-    <button id="voiceHold" class="voice-hold" title="Tartsd lenyomva a beszédhez"><span id="voiceIcon">◉</span><span><b id="voiceName">Hangasszisztens</b><small id="voiceStatus" role="status">Tartsd lenyomva a beszédhez</small></span></button>
     <div class="side-actions workspace-actions"><button class="btn" id="artifactsBtn">Artifactok <span id="artifactCount"></span></button></div>
     <div class="search">
       <svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -38,10 +36,8 @@
     <div class="section-label">Csevegések</div>
     <nav class="chat-list" id="chatList"></nav>
     <div class="side-foot">
-      <span class="status-dot" id="fccDot"></span>
-      <span id="fccText">FCC indítása…</span>
-      <button class="link" id="accBtn" title="Megjelenés, kapcsolatok és frissítések">Beállítások</button>
-
+      <span class="status-dot" id="fccDot" hidden></span><span id="fccText" hidden></span>
+      <button class="sidebar-settings" id="accBtn" type="button"><span class="settings-glyph" aria-hidden="true">⚙</span><span>Beállítások</span></button>
     </div>
   </aside>
 
@@ -52,8 +48,9 @@
       </button>
       <div class="title" id="title">Neutron</div>
       <div class="spacer"></div>
+      <button class="chip" id="projectHubBtn" type="button" title="Projektváltás" aria-haspopup="dialog"><span aria-hidden="true">▦</span><span id="projectHubName">Projektek</span></button>
       <button class="chip" id="dirChip" title="Munkakönyvtár"><span>📁</span><span id="dirName">~</span></button>
-      <button class="chip" id="modeChip" title="Engedélyezési mód"><span>🛡</span><span id="modeName">Alap</span></button>
+
       <div class="toggle" id="viewToggle">
         <span class="pill"></span>
         <button data-view="chat" class="on">Chat</button>
@@ -76,21 +73,33 @@
           <div class="composer" id="composer">
             <div id="composerFiles" hidden aria-label="Csatolt fájlok"></div>
             <div class="composer-inner">
-              <button type="button" class="icon-btn" id="attachFiles" aria-label="Fájlok csatolása" title="Fájlok csatolása">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 12.7 14.5 6a3.5 3.5 0 0 1 5 5l-8.8 9a5 5 0 0 1-7-7L12 4.5"/><path d="m7 16 8-8"/></svg>
-              </button>
-              <textarea id="input" rows="1" placeholder="Írj üzenetet, vagy / a parancsokhoz…" aria-label="Üzenet"></textarea>
-              <button class="send" id="send" title="Küldés (Enter)" aria-label="Küldés">
-                <svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 15V3M4 8l5-5 5 5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span class="stop"></span>
-              </button>
+              <textarea id="input" rows="1" placeholder="Írj a Neutronnak…" aria-label="Üzenet"></textarea>
+              <div class="composer-toolbar">
+                <button type="button" class="icon-btn" id="attachFiles" aria-label="Fájlok csatolása" title="Fájlok csatolása">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="chip" id="modeChip" title="Engedélyezési mód"><span id="modeName">Alap</span></button>
+                <div class="spacer"></div>
+                <button class="chip" id="modelChip" title="Modell"><span id="modelName">Modell…</span><span aria-hidden="true">⌄</span></button>
+                <div class="effort-control">
+                  <button type="button" class="chip" id="effortChip" aria-expanded="false" aria-controls="effortBar" hidden>Auto</button>
+                  <div id="effortBar" hidden>
+                    <div class="effort-head"><label for="effortSlider" title="Reasoning effort">ϟ</label><div><b id="effortName"></b><small id="effortModel"></small></div>
+                      <button type="button" id="resetEffort" title="Automatikus effort" aria-label="Automatikus effort">↺</button></div>
+                    <div class="effort-track"><input id="effortSlider" type="range" min="0" step="1" aria-label="Reasoning effort"><div id="effortTicks" aria-hidden="true"></div></div>
+                  </div>
+                </div>
+                <button id="voiceHold" class="icon-btn composer-voice" title="Tartsd lenyomva a beszédhez" aria-label="Hangasszisztens, tartsd lenyomva">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3"/></svg>
+                </button>
+                <button class="send" id="send" title="Küldés (Enter)" aria-label="Küldés">
+                  <svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 15V3M4 8l5-5 5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+                  <span class="stop"></span>
+                </button>
+              </div>
             </div>
           </div>
-          <div class="composer-tools"><button class="chip" id="modelChip" title="Modell"><span class="dot"></span><span id="modelName">Modell…</span></button><div id="effortBar" hidden>
-            <div class="effort-head"><label for="effortSlider" title="Reasoning effort">ϟ</label><div><b id="effortName"></b><small id="effortModel"></small></div>
-              <button type="button" id="resetEffort" title="Automatikus effort" aria-label="Automatikus effort">↺</button></div>
-            <div class="effort-track"><input id="effortSlider" type="range" min="0" step="1" aria-label="Reasoning effort"><div id="effortTicks" aria-hidden="true"></div></div>
-          </div></div>
+          <small id="voiceStatus" role="status" hidden></small>
           <div class="hint"><kbd>Enter</kbd> küldés · <kbd>Shift+Enter</kbd> új sor · <span id="slashHint"><kbd>/</kbd> parancsok · </span> <kbd>Esc</kbd> leállítás</div>
         </div>
       </section>
@@ -123,13 +132,13 @@
       <button class="btn" id="spotifyDisconnect" hidden>Leválasztás</button>
     </section>
     <section data-panel="connections" hidden><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
-      <div id="gmailLogin">
+      <div id="gmailAccounts"></div><div id="gmailLogin">
         <form id="gmailForm"><label>Gmail- vagy Workspace-cím<input type="email" id="gmailEmail" autocomplete="username" required></label>
         <label>Google-alkalmazásjelszó<input type="password" id="gmailPassword" autocomplete="off" required></label>
         <div class="settings-actions"><button class="btn go">Gmail csatlakoztatása</button><button type="button" class="link" id="gmailHelp">Alkalmazásjelszó létrehozása ↗</button></div></form>
         <details><summary>Bejelentkezés Google OAuth használatával</summary><p>Engedélyezd a Gmail API-t a Google Cloud-projektedben, majd válaszd ki a Desktop app típusú kliens letöltött JSON-fájlját. A küldést a Google oldalán engedélyezheted.</p><button class="btn" id="gmailOAuth">Google-bejelentkezés</button></details>
       </div>
-      <button class="btn" id="gmailDisconnect" hidden>Gmail leválasztása</button><p id="gmailFeedback" role="status"></p>
+      <p id="gmailFeedback" role="status"></p>
     </section>
     <section id="outboxSection" data-panel="connections" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
     <section data-panel="updates" hidden><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div><button class="btn" id="showReleaseNotes">Kiadási megjegyzések</button></section>
@@ -138,6 +147,10 @@
       <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
     </section>
   </div>
+</dialog>
+<dialog id="projectHub" class="studio compact" aria-labelledby="projectHubTitle">
+  <div class="studio-head"><h2 id="projectHubTitle">Projektek</h2><button class="dismiss" type="button" aria-label="Bezárás">×</button></div>
+  <div class="workspace-body"><div class="project-bar"><label for="projectSelect">Aktív projekt</label><div><select id="projectSelect" aria-label="Aktív projekt"></select><button class="btn" id="projectFolder" title="Projektmappa megnyitása" aria-label="Projektmappa megnyitása" hidden>↗</button><button class="btn" id="createProject" title="Új projekt" aria-label="Új projekt">＋</button></div></div></div>
 </dialog>
 <dialog id="projectDialog" class="studio compact" aria-labelledby="projectTitle"><div class="studio-head"><div><h2 id="projectTitle">Új projekt</h2><p>A projekt csevegései közös munkamappát és artifactokat használnak.</p></div><button class="dismiss" aria-label="Bezárás">×</button></div><form class="workspace-body" id="projectForm"><label>Projekt neve<input id="projectName" maxlength="80" required placeholder="Például Minecraft műhely"></label><button class="btn primary">Projekt létrehozása</button></form></dialog>
 
@@ -191,6 +204,19 @@
       <button type="button" class="btn" data-binding="Mouse5">Egér 5 (előre)</button></div>
     <label>Hanggal indított feladatok munkamappája<button type="button" class="btn" id="voiceFolder"></button></label>
     <small>A kijelölt mappában a célmodell fájlokat is szerkeszthet.</small>
+    <details id="speechDetails">
+      <summary>Magyar beszédfelismerés és természetes hang</summary>
+      <p>A neurális hanghoz és a magyar beszédfelismeréshez saját Azure Speech-erőforrást adhatsz meg. Ha bekapcsolod, a felvétel és a felolvasandó szöveg a Microsofthoz kerül. A felolvasott hang mesterséges.</p>
+      <div class="model-fields">
+        <label>Azure Speech-erőforrás neve<input id="speechResource" autocomplete="off" maxlength="63"></label>
+        <label>Azure Speech API-kulcs<input id="speechKey" type="password" autocomplete="off" maxlength="128"></label>
+      </div>
+      <label>Magyar hang<select id="ttsVoice"><option value="hu-HU-NoemiNeural">Noémi</option><option value="hu-HU-TamasNeural">Tamás</option></select></label>
+      <div class="dialog-actions"><button type="button" id="speechDisconnect" class="btn" hidden>Leválasztás</button>
+        <button type="button" id="speechSample" class="btn" hidden>Próbahang</button>
+        <button type="button" id="speechConnect" class="btn">Azure Speech mentése</button></div>
+      <p id="speechStatus" role="status"></p>
+    </details>
     <p id="voiceInfo" role="status"></p>
     <div class="dialog-actions"><button type="button" id="voiceQuiet" class="btn">Felolvasás leállítása</button><button class="btn go">Mentés</button></div>
   </form>
@@ -231,6 +257,7 @@
 <script src="settings.js"></script>
 <script src="retry-policy.js"></script>
 <script src="appearance.js"></script>
+<script src="speech-wave.js"></script>
 <script src="voice-ui.js"></script>
 </body>
 </html>

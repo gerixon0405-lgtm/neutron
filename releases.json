@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.2.2",
+    "title": "Letisztult chat, több Gmail-fiók és magyar hang",
+    "changes": [
+      "Az új beviteli sávban egy helyen van a csatolás, a modell, az effort, a mikrofon és a küldés. A projektek a felső sávba kerültek.",
+      "A Neutron új ikont kapott a felületen és a telepítőkben.",
+      "Több Gmail-fiókot is csatlakoztathatsz, alapértelmezett feladót választhatsz, vagy csevegésben megadhatod, melyik címről menjen a levél.",
+      "A hangasszisztens jobb minőségű helyi Whisper-modelleket és Piper magyar neurális hangot is használhat. Opcionálisan az Azure Speech két magyar hangja és beszédfelismerése is elérhető."
+    ]
+  },
+  {
     "version": "1.2.1",
     "title": "Mellékletek, Spotify és automatikus újrapróbálás",
     "changes": [

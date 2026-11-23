@@ -11,6 +11,13 @@ const {isRateLimit,rateRetryDecision,RATE_RETRY_DELAY}=require("../retry-policy"
   for(let n=1;n<10;n++)assert.equal(rateRetryDecision(n,false),"wait");
   assert.equal(rateRetryDecision(10,false),"limit");
   assert.equal(rateRetryDecision(1,true),"effects");
+  const {pcm16Wave}=require("../speech-wave");
+  const wav=Buffer.from(pcm16Wave([-1,0,1]));
+  assert.equal(wav.toString("ascii",0,4),"RIFF");
+  assert.equal(wav.readUInt32LE(24),16000);
+  assert.equal(wav.readUInt16LE(22),1);
+  assert.equal(wav.readInt16LE(44),-32768);
+  assert.equal(wav.readInt16LE(48),32767);
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-input-test-"));
   process.env[process.platform==="win32"?"USERPROFILE":"HOME"]=folder;
   try {

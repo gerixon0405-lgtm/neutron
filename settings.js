@@ -56,15 +56,24 @@ $("#addClaudeForm").onsubmit=async e=>{
 };
 function drawMail(state){
   const connected=!!state.email;
-  $("#gmailState").textContent=connected ? [state.email,state.note].filter(Boolean).join(" · ") : "Egy Gmail-fiókkal egy vagy több címzettnek is küldhetsz levelet a chatből.";
-  $("#gmailLogin").hidden=connected && !state.note;
-  $("#gmailDisconnect").hidden=!connected;mailConnected=connected;
+  $("#gmailState").textContent=connected ? "Alapértelmezett feladó: "+state.email : "Csatlakoztass egy Gmail-fiókot a chatből indított küldéshez.";
+  const accountsList=$("#gmailAccounts");
+  accountsList.replaceChildren();
+  for (const account of state.accounts || []) {
+    const row=accountRow(account.email,account.note || (account.is_default ? "Alapértelmezett feladó" : "Csatlakoztatva"));
+    if(!account.is_default) row.append(settingsButton("Legyen az alapértelmezett",()=>mailAction(()=>N.mail.select(account.email))));
+    row.append(settingsButton("Leválasztás",()=>{
+      if(confirm(`Leválasztod ezt a Gmail-fiókot? ${account.email}`))return mailAction(()=>N.mail.disconnect(account.email));
+    }));
+    accountsList.append(row);
+  }
+  mailConnected=connected;
   $("#outboxSection").hidden=!connected || settingsTab!=="connections";
   const list=$("#gmailOutbox");list.replaceChildren();
   if(!state.batches?.length){list.textContent="Még nincs sorba állított levél.";return;}
   for(const batch of state.batches){
     const stats=Object.entries(batch.counts).map(([k,v])=>v+" "+(stateLabels[k] || k)).join(" · ");
-    const row=accountRow(batch.subject,stats);
+    const row=accountRow(batch.subject,batch.email+" · "+stats);
     if(batch.counts.pending)row.append(settingsButton("Hátralévők leállítása",async()=>{
       await N.mail.cancel(batch.id);await refreshMail(true);
     }));
@@ -89,9 +98,9 @@ async function refreshMail(force=false){
 async function mailAction(task){
   if(mailBusy)return;
   mailBusy=true;
-  const buttons=[...settingsDialog.querySelectorAll("#gmailLogin button,#gmailDisconnect")];
+  const buttons=[...settingsDialog.querySelectorAll("#gmailLogin button,#gmailAccounts button")];
   buttons.forEach(b=>b.disabled=true);$("#gmailFeedback").textContent="Kapcsolat frissítése…";
-  try{const answer=await task();$("#gmailFeedback").textContent=answer?.email?"A Gmail-fiók csatlakoztatva.":"";await refreshMail(true);}
+  try{const answer=await task();$("#gmailFeedback").textContent=answer?.email?answer.email:"";await refreshMail(true);}
   catch(e){$("#gmailFeedback").textContent=(e.message || String(e)).replace(/^Error invoking remote method '[^']+': Error: /,"");}
   finally{mailBusy=false;buttons.forEach(b=>b.disabled=false);}
 }
@@ -102,7 +111,6 @@ $("#gmailForm").onsubmit=e=>{
 };
 $("#gmailOAuth").onclick=()=>mailAction(()=>N.mail.oauth());
 $("#gmailHelp").onclick=()=>N.mail.passwordPage().catch(e=>toast(e.message,true));
-$("#gmailDisconnect").onclick=()=>mailAction(()=>N.mail.disconnect());
 document.querySelectorAll("[data-settings]").forEach(button=>button.onclick=()=>{
   settingsTab=button.dataset.settings;
   document.querySelectorAll("[data-settings]").forEach(tab=>tab.setAttribute("aria-pressed",tab===button));

@@ -267,7 +267,7 @@ function createWindow() {
     backgroundColor: "#07070f", title: "Neutron",
     icon: path.join(__dirname, "icon.png"),
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, autoplayPolicy: "no-user-gesture-required" },
   });
 
   win.on("closed", () => { overlay?.stdin.end(); overlay=null; });
@@ -298,11 +298,12 @@ ipcMain.handle("voice:plan", async (_, { transcript, targets, history,shot,scree
   return result;
 });
 ipcMain.handle("voice:bind", (_, trigger) => voice.bind(trigger, event => send("voice:event", event)));
-ipcMain.on("voice:speak", (_, text) => voice.speak(text, label => send("voice:event", {type:"error",label}), () => send("voice:event",{type:"spoken"})));
-ipcMain.on("voice:silence", () => voice.silence());
+ipcMain.on("voice:speak", (_, text) => voice.speak(text, label => send("voice:event", {type:"error",label}), () => send("voice:event",{type:"spoken"}), bytes=>send("voice:event",{type:"audio",bytes})));
+ipcMain.on("voice:silence", () => {voice.silence();send("voice:event",{type:"silence"});});
 spaces.register(ipcMain, () => win);
 mail.register(() => win);
 require("./spotify-auth").register();
+require("./speech-cloud").register();
 require("./updater").register();
 ipcMain.handle("config:get", () => loadConfig());
 ipcMain.handle("config:set", (_, c) => { saveConfig(c); return true; });

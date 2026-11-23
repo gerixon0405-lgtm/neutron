@@ -53,7 +53,8 @@ function register(getWindow){
   ipcMain.handle("mail:status",(_,batch)=>run("status",{batch}));
   ipcMain.handle("mail:cancel",(_,batch)=>run("cancel",{batch}));
   ipcMain.handle("mail:smtp",(_,email,password)=>run("smtp",{email,password}));
-  ipcMain.handle("mail:disconnect",()=>run("disconnect"));
+  ipcMain.handle("mail:disconnect",(_,sender)=>run("disconnect",{sender}));
+  ipcMain.handle("mail:select",(_,sender)=>run("select",{sender}));
   ipcMain.handle("mail:password-page",()=>shell.openExternal("https://myaccount.google.com/apppasswords"));
   ipcMain.handle("mail:oauth",async()=>{
     let client={client_id:process.env.NEUTRON_GOOGLE_CLIENT_ID,client_secret:process.env.NEUTRON_GOOGLE_CLIENT_SECRET};

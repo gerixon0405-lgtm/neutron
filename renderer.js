@@ -181,6 +181,7 @@ function defaultModel() {
 
 function renderChat() {
   renderQuickPermission();
+  showEffort(false);
   renderComposerFiles();
   updateArtifacts();
   const th = $("#thread");
@@ -448,7 +449,8 @@ function setBusyUi() {
   const busy = chat && live.has(chat.id);
   $("#composer").classList.toggle("busy", busy);
   $("#send").title = busy ? "Leállítás (Esc)" : "Küldés (Enter)";
-  $("#modelChip").disabled = !!busy;
+  $("#modelChip").disabled = $("#effortChip").disabled = !!busy;
+  if (busy) showEffort(false);
   $("#effortSlider").disabled = $("#resetEffort").disabled = !!busy || view === "term";
   $("#dirChip").disabled = !!(chat && (chat.items.length || chat.projectId));
   renderList();
@@ -845,6 +847,7 @@ let popEl = null;
 function closePop() { popEl?.remove(); popEl = null; }
 function popover(anchor, { items, search, onPick, current, up }) {
   closePop();
+  showEffort(false);
   const p = document.createElement("div");
   p.className = "pop";
   document.body.append(p);
@@ -979,11 +982,28 @@ function effortLevels(c) {
     return ["low","medium","high","xhigh","max"];
   return [];
 }
+function showEffort(opened) {
+  $("#effortBar").hidden=!opened;
+  $("#effortChip").setAttribute("aria-expanded",opened);
+}
+$("#effortChip").onclick=()=>{
+  closePop();
+  const opened=$("#effortBar").hidden;
+  showEffort(opened);
+  if(opened)$("#effortSlider").focus();
+};
+addEventListener("pointerdown",event=>{
+  if(!event.target.closest(".effort-control"))showEffort(false);
+});
+$("#effortBar").onkeydown=event=>{
+  if(event.key==="Escape"){event.stopPropagation();showEffort(false);$("#effortChip").focus();}
+};
 function renderEffort() {
   const levels = ["", ...effortLevels(chat)], key = chat.provider === "codex" ? "codexEffort" : "effort";
   const index = Math.max(0, levels.indexOf(chat[key]));
   if (chat.provider !== "fcc" || models.length) chat[key] = levels[index];
-  $("#effortBar").hidden = levels.length < 2;
+  $("#effortChip").hidden = levels.length < 2;
+  if (levels.length < 2) showEffort(false);
   const slider = $("#effortSlider");
   slider.style.setProperty("--steps",Math.max(1,levels.length-1));
   slider.max = levels.length - 1; slider.value = index;
@@ -993,7 +1013,7 @@ function renderEffort() {
   if(ticks.childElementCount!==levels.length)ticks.replaceChildren(...levels.map(()=>document.createElement("i")));
   const label = () => {
     const value = EFFORTS[levels[slider.value]] || levels[slider.value];
-    $("#effortName").textContent = value; slider.setAttribute("aria-valuetext", value);
+    $("#effortChip").textContent = $("#effortName").textContent = value; slider.setAttribute("aria-valuetext", value);
     slider.style.setProperty("--fill", (100 * Number(slider.value) / Math.max(1,levels.length - 1)) + "%");
   };
   label(); slider.oninput = label;

@@ -16,8 +16,8 @@ import gmail
 
 ROOT=Path.home()/".local/share/neutron/mail"
 DDL="""
-CREATE TABLE IF NOT EXISTS account(singleton INTEGER PRIMARY KEY CHECK(singleton=1),email TEXT, slot TEXT, method TEXT,
-    resume_at REAL DEFAULT 0,note TEXT DEFAULT '',needs_login INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS accounts(email TEXT PRIMARY KEY,slot TEXT NOT NULL,method TEXT NOT NULL,
+    resume_at REAL DEFAULT 0,note TEXT DEFAULT '',needs_login INTEGER DEFAULT 0,is_default INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS batch(id TEXT PRIMARY KEY,email TEXT NOT NULL,scope TEXT NOT NULL,
     fingerprint TEXT NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,created REAL NOT NULL,
     UNIQUE(email,scope,fingerprint));
@@ -35,6 +35,13 @@ def database():
         db.row_factory=sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
         db.executescript(DDL)
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account'").fetchone():
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account'").fetchone():
+                    db.execute("""INSERT OR IGNORE INTO accounts
+                        SELECT email,slot,method,resume_at,note,needs_login,1 FROM account""")
+                    db.execute("DROP TABLE account")
         yield db
 
 
@@ -45,21 +52,24 @@ def lock(name,nonblocking=False):
         yield
 
 
-def active(db):
-    return db.execute("SELECT * FROM account WHERE singleton=1").fetchone()
+def active(db, sender=""):
+    if sender:
+        return db.execute("SELECT * FROM accounts WHERE lower(email)=lower(?)",(sender.strip(),)).fetchone()
+    return db.execute("SELECT * FROM accounts ORDER BY is_default DESC,rowid LIMIT 1").fetchone()
 
 
 def connect(cred):
     with lock("connection"),database() as db:
-        old=active(db)
+        old=active(db,cred["email"])
+        if old:
+            cred = dict(cred,email=old["email"])
         slot=uuid.uuid4().hex
         gmail.vault(slot,cred)
         try:
             with db:
-                if old and old["email"] != cred["email"]:
-                    db.execute("UPDATE delivery SET state='cancelled' WHERE state='pending' AND batch IN (SELECT id FROM batch WHERE email=?)",(old["email"],))
-                db.execute("INSERT OR REPLACE INTO account(singleton,email,slot,method) VALUES(1,?,?,?)",
-                           (cred["email"],slot,cred["method"]))
+                db.execute("""INSERT INTO accounts(email,slot,method,is_default) VALUES(?,?,?,?)
+                    ON CONFLICT(email) DO UPDATE SET slot=excluded.slot,method=excluded.method,
+                    resume_at=0,note='',needs_login=0""", (cred["email"],slot,cred["method"],int(active(db) is None)))
         except Exception:
             gmail.vault(slot,remove=True)
             raise
@@ -68,15 +78,26 @@ def connect(cred):
     return {"email":cred["email"]}
 
 
-def disconnect():
+def select(sender):
+    with lock("connection"),database() as db,db:
+        account=active(db,sender)
+        if not account:
+            raise ValueError("A Gmail-fiók nincs csatlakoztatva.")
+        db.execute("UPDATE accounts SET is_default=(email=?)",(account["email"],))
+        return {"email":account["email"]}
+
+
+def disconnect(sender=""):
     with lock("connection"),database() as db:
-        old=active(db)
+        old=active(db,sender)
         if old:
             gmail.vault(old["slot"],remove=True)
             with db:
-                db.execute("DELETE FROM account")
+                db.execute("DELETE FROM accounts WHERE email=?",(old["email"],))
                 db.execute("""UPDATE delivery SET state='cancelled',note='A fiókot leválasztották.'
                     WHERE state='pending' AND batch IN (SELECT id FROM batch WHERE email=?)""",(old["email"],))
+                if old["is_default"] and (next_account:=active(db)):
+                    db.execute("UPDATE accounts SET is_default=1 WHERE email=?",(next_account["email"],))
     return {}
 
 
@@ -88,25 +109,25 @@ def summary(db,bid):
 
 def status(bid="",details=False):
     with database() as db:
-        a=active(db)
-        if not a:
-            if bid: raise ValueError("Nincs csatlakoztatott Gmail-fiók.")
-            return {"email":None,"batches":[]}
         if bid:
-            if not db.execute("SELECT 1 FROM batch WHERE id=? AND email=?",(bid,a["email"])).fetchone():
+            account=db.execute("""SELECT a.note FROM batch b JOIN accounts a ON a.email=b.email
+                WHERE b.id=?""",(bid,)).fetchone()
+            if not account:
                 raise ValueError("Ehhez a fiókhoz nem található ilyen küldés.")
             result=summary(db,bid)
             if details:
                 result["problems"]=[dict(r) for r in db.execute("""SELECT recipient,state,note FROM delivery
                     WHERE batch=? AND state IN ('failed','unknown') ORDER BY id LIMIT 100""",(bid,))]
-            result["account_note"]=a["note"]
+            result["account_note"]=account["note"]
             return result
-        ids=db.execute("SELECT id FROM batch WHERE email=? ORDER BY created DESC LIMIT 15",(a["email"],))
-        return {"email":a["email"],"method":a["method"],"note":a["note"],"resume_at":a["resume_at"],
-                "batches":[summary(db,r[0]) for r in ids]}
+        a=active(db)
+        accounts=[dict(row) for row in db.execute("""SELECT email,method,note,needs_login,is_default
+                  FROM accounts ORDER BY is_default DESC,email""")]
+        ids=db.execute("SELECT b.id FROM batch b JOIN accounts a ON a.email=b.email ORDER BY b.created DESC LIMIT 15")
+        return {"email":a["email"] if a else None,"accounts":accounts,"batches":[summary(db,r[0]) for r in ids]}
 
 
-def enqueue(recipients,subject,body,scope):
+def enqueue(recipients,subject,body,scope,sender=""):
     if not isinstance(recipients,list) or not recipients:
         raise ValueError("Adj meg legalább egy címzettet.")
     if not isinstance(subject,str) or not subject.strip() or any(ord(c)<32 or ord(c)==127 for c in subject):
@@ -117,7 +138,7 @@ def enqueue(recipients,subject,body,scope):
     fingerprint=hashlib.sha256(json.dumps([sorted(targets),subject,body],ensure_ascii=False).encode()).hexdigest()
     with database() as db,db:
         db.execute("BEGIN IMMEDIATE")
-        a=active(db)
+        a=active(db,sender)
         if not a or a["needs_login"]:
             raise ValueError("Csatlakoztasd a Gmail-fiókot a Beállításokban.")
         old=db.execute("SELECT id FROM batch WHERE scope=? AND email=? AND fingerprint=?",(scope,a["email"],fingerprint)).fetchone()
@@ -132,10 +153,8 @@ def enqueue(recipients,subject,body,scope):
 
 def cancel(bid):
     with database() as db,db:
-        a=active(db)
-        if not a: raise ValueError("Nincs csatlakoztatott fiók.")
         db.execute("""UPDATE delivery SET state='cancelled' WHERE state='pending' AND batch=?
-            AND batch IN (SELECT id FROM batch WHERE email=?)""",(bid,a["email"]))
+            AND batch IN (SELECT b.id FROM batch b JOIN accounts a ON a.email=b.email)""",(bid,))
     return status(bid)
 
 
@@ -147,37 +166,35 @@ Ellenőrizd az Elküldött leveleket.' WHERE state='sending'""")
 
 def step(db):
     with lock("connection"):
-        a=active(db)
-        if not a or a["needs_login"] or a["resume_at"]>time.time():
-            return False
         with db:
             db.execute("BEGIN IMMEDIATE")
-            row=db.execute("""SELECT d.*,b.subject,b.body FROM delivery d JOIN batch b ON b.id=d.batch
-                WHERE b.email=? AND d.state='pending' ORDER BY d.id LIMIT 1""",(a["email"],)).fetchone()
+            row=db.execute("""SELECT d.*,b.subject,b.body,b.email,a.slot FROM delivery d JOIN batch b ON b.id=d.batch
+                JOIN accounts a ON a.email=b.email WHERE d.state='pending' AND a.needs_login=0 AND a.resume_at<=?
+                ORDER BY d.id LIMIT 1""",(time.time(),)).fetchone()
             if not row: return False
             db.execute("UPDATE delivery SET state='sending' WHERE id=?",(row["id"],))
         state,note="sent",""
         try:
             try:
-                cred=gmail.vault(a["slot"])
+                cred=gmail.vault(row["slot"])
             except Exception:
                 raise gmail.DeliveryError("auth","A rendszer kulcstartója nem elérhető.")
-            if not cred or cred.get("email")!=a["email"]:
+            if not cred or cred.get("email")!=row["email"]:
                 raise gmail.DeliveryError("auth","A mentett hitelesítés nem elérhető.")
-            gmail.deliver(cred,a["slot"],row["recipient"],row["subject"],row["body"],row["message_id"])
+            gmail.deliver(cred,row["slot"],row["recipient"],row["subject"],row["body"],row["message_id"])
         except gmail.DeliveryError as err:
             state,note=err.state,str(err)
             if state in ("auth","pending"):
                 with db:
-                    db.execute("UPDATE account SET needs_login=?,note=?,resume_at=? WHERE singleton=1",
-                               (int(state=="auth"),note,time.time()+err.delay))
+                    db.execute("UPDATE accounts SET needs_login=?,note=?,resume_at=? WHERE email=?",
+                               (int(state=="auth"),note,time.time()+err.delay,row["email"]))
                 state="pending"
         except Exception:
             state,note="unknown","A küldés eredménye bizonytalan. Ellenőrizd az Elküldött leveleket."
         with db:
             db.execute("UPDATE delivery SET state=?,note=? WHERE id=?",(state,note,row["id"]))
             if state=="sent":
-                db.execute("UPDATE account SET resume_at=0,note='' WHERE singleton=1")
+                db.execute("UPDATE accounts SET resume_at=0,note='' WHERE email=?",(row["email"],))
         return True
 
 
@@ -201,7 +218,8 @@ def worker():
 def cli(action,data):
     if action=="status": return status(data.get("batch",""),True)
     if action=="cancel": return cancel(data["batch"])
-    if action=="disconnect": return disconnect()
+    if action=="disconnect": return disconnect(data.get("sender",""))
+    if action=="select": return select(data["sender"])
     if action=="smtp": return connect(gmail.password_login(data["email"],data["password"]))
     if action=="oauth": return connect(gmail.oauth_login(data["client"]))
     raise ValueError("Ismeretlen Gmail-művelet.")

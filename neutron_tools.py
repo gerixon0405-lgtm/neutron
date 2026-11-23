@@ -328,15 +328,15 @@ def spotify_player(action, value="", track=""):
     return neutron_music.local(action, value, track)
 
 
-@tool("Queue Gmail delivery only on an explicit user instruction to send, to the email addresses the user specifies. Do not send a draft or infer an address from a name. Each recipient gets a private copy. Queueing is not confirmation of sending. Use gmail_delivery_status with the returned ID to check acceptance. For different subjects or bodies use separate calls.", recipients=list, subject=str, body=str)
-def gmail_send(recipients, subject, body):
+@tool("Queue Gmail delivery only on an explicit user instruction to send, to the email addresses the user specifies. Do not send a draft or infer an address from a name. Each recipient gets a private copy. Queueing is not confirmation of sending. Use gmail_delivery_status with the returned ID to check acceptance. For a specific sender provide its connected email in sender; otherwise use the default sender. For different subjects or bodies use separate calls.", recipients=list, subject=str, body=str, sender=str)
+def gmail_send(recipients, subject, body, sender=""):
     turn = os.environ.get("NEUTRON_MAIL_TURN")
     if not turn or not Path(turn).is_file():
         raise ValueError("A Gmail-küldéshez nyiss Neutron-chatet.")
-    return mail_outbox.enqueue(recipients,subject,body,Path(turn).read_text().strip())
+    return mail_outbox.enqueue(recipients,subject,body,Path(turn).read_text().strip(),sender)
 
 
-@tool("Get connected sender and recent Gmail batches, or per-recipient delivery counts and errors for a batch ID. sent means Gmail accepted the message; pending/sending means still in progress; unknown must be checked in Gmail before resending.", batch=str)
+@tool("Get connected senders and recent Gmail batches, or per-recipient delivery counts and errors for a batch ID. sent means Gmail accepted the message; pending/sending means still in progress; unknown must be checked in Gmail before resending.", batch=str)
 def gmail_delivery_status(batch=""):
     return mail_outbox.status(batch,True)
 

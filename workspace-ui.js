@@ -6,11 +6,13 @@ const artifactScope = () => ({id:chat.id, projectId:chat.projectId || ""});
 async function initProjects() {
   projectRows = await N.projects.list();
   if (!activeProject()) cfg.activeProject = "";
-  const select = $("#projectSelect");
+  const select = $("#projectSelect"), hub=$("#projectHub");
+  $("#projectHubBtn").onclick=()=>hub.showModal();
   function render() {
     select.replaceChildren(new Option("Projekt nélküli chatek", ""), ...projectRows.map(p => new Option(p.name,p.id)));
     select.value = cfg.activeProject;
     $("#projectFolder").hidden = !cfg.activeProject;
+    $("#projectHubName").textContent=activeProject()?.name || "Projektek";
   }
   async function activate(id) {
     if (view === "term") setView("chat");
@@ -23,9 +25,9 @@ async function initProjects() {
   }
   render();
   $("#projectFolder").onclick = () => N.projects.open(cfg.activeProject).catch(e => toast(e.message,true));
-  select.onchange = () => activate(select.value).catch(e => toast(e.message,true));
+  select.onchange = () => {hub.close();activate(select.value).catch(e => toast(e.message,true));};
   document.querySelectorAll(".compact .dismiss").forEach(b => b.onclick = () => b.closest("dialog").close());
-  $("#createProject").onclick = () => { $("#projectName").value = ""; $("#projectDialog").showModal(); $("#projectName").focus(); };
+  $("#createProject").onclick = () => { hub.close(); $("#projectName").value = ""; $("#projectDialog").showModal(); $("#projectName").focus(); };
   $("#projectForm").onsubmit = async e => {
     e.preventDefault();
     const btn = e.submitter;
