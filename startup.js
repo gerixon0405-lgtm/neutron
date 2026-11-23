@@ -7,13 +7,19 @@ const { randomUUID } = require("node:crypto");
 const loginName = "io.github.gerixon0405.neutron";
 const managedKey = "X-Neutron-Managed=true";
 
-function desktopEntry(executable, extract=false) {
+function quoteExec(value) {
+  return '"'+value.replace(/["\\$`]/g, "\\$&").replace(/%/g,"%%").replace(/\\/g,"\\\\")+'"';
+}
+
+function desktopEntry(executable, runtimeDirectory="") {
   if (!path.isAbsolute(executable) || /[\x00-\x1f=]/.test(executable)) throw Error("Az alkalmazás elérési útja nem használható indítófájlban.");
-  const quoted = executable.replace(/["\\$`]/g, "\\$&").replace(/%/g,"%%").replace(/\\/g,"\\\\");
+  if (runtimeDirectory && (!path.isAbsolute(runtimeDirectory) || /[\x00-\x1f]/.test(runtimeDirectory)))
+    throw Error("Az automatikus indítás gyorsítótára nem érhető el.");
   // GLib verifies the executable name before unescaping percent codes.
-  const launcher=extract ? "/usr/bin/env -- APPIMAGE_EXTRACT_AND_RUN=1 " : executable.includes("%") ? "/usr/bin/env -- " : "";
+  const launcher=runtimeDirectory ? "/usr/bin/env -- APPIMAGE_EXTRACT_AND_RUN=1 "+quoteExec("TMPDIR="+runtimeDirectory)+" " :
+    executable.includes("%") ? "/usr/bin/env -- " : "";
   return [
-    "[Desktop Entry]", "Type=Application", "Name=Neutron", 'Exec='+launcher+'"'+quoted+'"',
+    "[Desktop Entry]", "Type=Application", "Name=Neutron", "Exec="+launcher+quoteExec(executable),
     "Terminal=false", "Icon=neutron", managedKey, "",
   ].join("\n");
 }
@@ -35,12 +41,13 @@ function linuxLogin(configDirectory) {
       return {available:false,enabled:false,message:"Már létezik egy kézzel létrehozott Neutron-indító."};
     return {available:true,enabled:!!data && !/^(?:Hidden=true|X-GNOME-Autostart-enabled=false)\s*$/mi.test(data)};
   }
-  function set(enabled, executable, extract) {
+  function set(enabled, executable, runtimeDirectory) {
     const current=status();
     if(!current.available)throw Error(current.message);
     if(!enabled)fs.rmSync(filename,{force:true});
     else {
-      const content=desktopEntry(executable,extract);
+      const content=desktopEntry(executable,runtimeDirectory);
+      if(runtimeDirectory)fs.mkdirSync(runtimeDirectory,{recursive:true,mode:0o700});
       fs.mkdirSync(path.dirname(filename),{recursive:true,mode:0o700});
       const temp=filename+"."+randomUUID()+".tmp";
       try {
@@ -50,13 +57,23 @@ function linuxLogin(configDirectory) {
     }
     return status();
   }
-  return {status,set};
+  function upgradeExtractEntry(executable,runtimeDirectory) {
+    if(!runtimeDirectory)return;
+    const data=read();
+    if(data.includes("APPIMAGE_EXTRACT_AND_RUN=1") && !data.includes("TMPDIR=") && status().enabled)
+      set(true,executable,runtimeDirectory);
+  }
+  return {status,set,upgradeExtractEntry};
 }
 
 function loginController(app) {
   const format=process.platform;
   const appImage=process.env.APPIMAGE;
-  const extract=["1","true"].includes(process.env.APPIMAGE_EXTRACT_AND_RUN);
+  const extract=Object.hasOwn(process.env,"APPIMAGE_EXTRACT_AND_RUN") ||
+    path.basename(process.env.APPDIR || "").startsWith("appimage_extracted_");
+  const cache=process.env.XDG_CACHE_HOME;
+  // Extract-and-run uses a shared directory and cleans it when a second launcher exits.
+  const runtimeDirectory=extract ? path.join(cache && path.isAbsolute(cache)?cache:path.join(os.homedir(),".cache"),"neutron-login") : "";
   const supported=app.isPackaged && (format==="win32" || (format==="linux" && appImage));
   const directory=process.env.XDG_CONFIG_HOME;
   const linux=linuxLogin(directory && path.isAbsolute(directory)?directory:path.join(os.homedir(),".config"));
@@ -69,14 +86,17 @@ function loginController(app) {
   }
   function set(enabled) {
     if(!supported)throw Error(unavailable.message);
-    if(format==="linux")return linux.set(enabled,appImage,extract);
+    if(format==="linux")return linux.set(enabled,appImage,runtimeDirectory);
     app.setLoginItemSettings({openAtLogin:enabled,enabled,path:process.execPath,args:[],name:loginName});
     return status();
   }
   function updateAppImage(executable) {
-    if(format==="linux" && supported && linux.status().enabled)linux.set(true,executable,extract);
+    if(format==="linux" && supported && linux.status().enabled)linux.set(true,executable,runtimeDirectory);
   }
-  return {status,set,updateAppImage};
+  function upgradeExtractEntry() {
+    if(format==="linux" && supported)linux.upgradeExtractEntry(appImage,runtimeDirectory);
+  }
+  return {status,set,updateAppImage,upgradeExtractEntry};
 }
 
 async function systemBootId() {

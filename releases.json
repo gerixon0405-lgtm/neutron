@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.3.8",
+    "title": "Külön AppImage-mappa automatikus indításhoz",
+    "changes": [
+      "Linuxon a FUSE nélküli automatikus indítás külön ideiglenes mappát használ, így a kézi indítás nem távolítja el a futó Neutron fájljait."
+    ]
+  },
+  {
     "version": "1.3.7",
     "title": "Liquid Glass és automatikus indítás",
     "changes": [

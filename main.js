@@ -403,7 +403,11 @@ function createWindow() {
   win.webContents.on("will-navigate", (e) => e.preventDefault());
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(()=>{
+  try{loginStartup.upgradeExtractEntry();}
+  catch(error){console.error("Az automatikus indító nem frissült:",error.message);}
+  createWindow();
+});
 app.on("second-instance",()=>{
   if(!win || win.isDestroyed())return;
   if(win.isMinimized())win.restore();

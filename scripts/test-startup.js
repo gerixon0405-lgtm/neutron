@@ -43,7 +43,12 @@ try{
   assert.equal(fs.readFileSync(filename,"utf8"),desktopEntry(appImage));
   startup.set(true,newer);
   assert.equal(fs.readFileSync(filename,"utf8"),desktopEntry(newer));
-  assert.match(desktopEntry(appImage,true),/^Exec=\/usr\/bin\/env -- APPIMAGE_EXTRACT_AND_RUN=1 /m);
+  const runtime=path.join(temp,"login runtime");
+  fs.writeFileSync(filename,desktopEntry(newer).replace("Exec=","Exec=/usr/bin/env -- APPIMAGE_EXTRACT_AND_RUN=1 "));
+  startup.upgradeExtractEntry(newer,runtime);
+  assert.equal(startup.status().enabled,true);
+  assert.equal(fs.statSync(runtime).isDirectory(),true);
+  assert.match(fs.readFileSync(filename,"utf8"),/^Exec=\/usr\/bin\/env -- APPIMAGE_EXTRACT_AND_RUN=1 "TMPDIR=/m);
   assert.equal(startup.set(false).enabled,false);
   assert.equal(fs.existsSync(filename),false);
   fs.writeFileSync(filename,"[Desktop Entry]\nName=Manual\n");
