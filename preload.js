@@ -88,6 +88,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     create: () => ipcRenderer.invoke("accounts:create"),
     remove: (dir) => ipcRenderer.invoke("accounts:remove", dir),
     status: (id) => ipcRenderer.invoke("accounts:status", id),
+    usage: (id) => ipcRenderer.invoke("accounts:usage", id),
   },
   home: () => ipcRenderer.invoke("home"),
   cc: {

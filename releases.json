@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.4",
+    "title": "Követhetőbb csevegések és rendezettebb beállítások",
+    "changes": [
+      "A gondolkodás közben érkező szöveg és a panel nyitott állapota csevegésváltáskor is megmarad.",
+      "A Beállítások AI-fiókok lapján látszik a Claude és a Codex rövid távú és heti kerete, a visszaállítás időpontjával együtt.",
+      "A csevegés és a videós műveletek élő időmérőt kaptak. A Gmail, a Spotify és a Discord külön beállítási lapra került."
+    ]
+  },
+  {
     "version": "1.3.3",
     "title": "Claude Desktop Code-beszélgetések importálása",
     "changes": [

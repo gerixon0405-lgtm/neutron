@@ -1,7 +1,9 @@
 "use strict";
 const settingsDialog=$("#settingsDialog");
-let settingsTab="appearance", mailConnected=false;
+let settingsTab="ai", mailConnected=false;
 let mailTimer, mailBusy=false, mailLoading=false, mailGeneration=0, lastMailView="";
+const usageSnapshots = new Map();
+let refreshingAi;
 const stateLabels={pending:"várakozik",sending:"küldés alatt",sent:"Gmail átvette",failed:"elutasítva",unknown:"ellenőrizendő",cancelled:"leállítva"};
 
 function settingsButton(text,fn){
@@ -17,30 +19,108 @@ function accountRow(title,description){
 }
 function loginFromSettings(a){
   if(chat && live.has(chat.id)) return toast("A bejelentkezéshez várd meg az aktuális választ.");
+  usageSnapshots.delete(a.id);
   settingsDialog.close();loginAccount(a);
 }
+function quotaLabel(meter) {
+  if (meter.window === "weekly") return "Heti keret";
+  if (meter.minutes && meter.minutes % 60 === 0) return `${meter.minutes / 60} órás keret`;
+  if (meter.minutes) return `${meter.minutes} perces keret`;
+  return meter.window === "session" ? "Rövid távú keret" : "Használati keret";
+}
+function paintUsage(host, snapshot) {
+  if (!snapshot?.rows.length) {
+    host.textContent = !snapshot || snapshot.pending ? "Használati adatok lekérése…" : "A fiókhoz jelenleg nincs elérhető kvótaadat.";
+    return;
+  }
+  host.replaceChildren();
+  const resetTime = new Intl.DateTimeFormat("hu-HU", {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  for (const meter of snapshot.rows) {
+    const row = document.createElement("div"), track = document.createElement("progress");
+    const title = quotaLabel(meter) + (meter.scope ? " · " + meter.scope : "");
+    const percent = Math.max(0, Math.min(100, meter.percent));
+    row.className = "quota-meter";
+    row.innerHTML = `<span>${esc(title)}</span><strong>${Math.round(percent)}%</strong>`;
+    track.max = 100;
+    track.value = percent;
+    track.setAttribute("aria-label", title);
+    if (percent >= 90) track.classList.add("near-limit");
+    row.append(track);
+    if (meter.reset && Number.isFinite(meter.reset)) {
+      const reset = new Date(meter.reset);
+      const time = document.createElement("time");
+      time.dateTime = reset.toISOString();
+      time.textContent = "Visszaáll " + resetTime.format(reset);
+      row.append(time);
+    }
+    host.append(row);
+  }
+}
+function addUsageCard(list, id, row, signedIn) {
+  const card = document.createElement("article");
+  card.className = "ai-account-card";
+  card.append(row);
+  if (signedIn) {
+    const host = document.createElement("div");
+    host.className = "quota-meters";
+    host.dataset.usageAccount = id;
+    paintUsage(host, usageSnapshots.get(id));
+    card.append(host);
+  }
+  list.append(card);
+}
+async function refreshUsage(id, force) {
+  const existing = usageSnapshots.get(id);
+  if (existing?.pending) return existing.pending;
+  if (!force && Date.now() - (existing?.at || 0) < 60000) return;
+  const snapshot = {rows:existing?.rows || [], at:0};
+  usageSnapshots.set(id, snapshot);
+  snapshot.pending = N.accounts.usage(id).then(rows => {snapshot.rows = rows;}).catch(() => {snapshot.rows = [];}).finally(() => {
+    snapshot.at = Date.now();
+    snapshot.pending = null;
+    for (const host of $("#aiAccounts").querySelectorAll("[data-usage-account]")) {
+      if (host.dataset.usageAccount === id && usageSnapshots.get(id) === snapshot) paintUsage(host, snapshot);
+    }
+  });
+  return snapshot.pending;
+}
+function refreshAi(force = false) {
+  if (refreshingAi) return refreshingAi;
+  $("#refreshUsage").disabled = true;
+  refreshingAi = (async () => {
+    await refreshAccounts();
+    drawAiAccounts();
+    await Promise.all(["codex", ...accounts().map(a => a.id)].filter(id => accStatus.get(id)?.loggedIn).map(id => refreshUsage(id, force)));
+  })().catch(error => toast(error.message, true)).finally(() => {
+    refreshingAi = null;
+    $("#refreshUsage").disabled = false;
+  });
+  return refreshingAi;
+}
+$("#refreshUsage").onclick = () => refreshAi(true);
+
 function drawAiAccounts(){
   const list=$("#aiAccounts"); list.replaceChildren();
   const cx=accStatus.get("codex"),codexAccount={id:"codex",name:"Codex"};
   const row=accountRow("Codex · ChatGPT",cx?.loggedIn?"Bejelentkezve":cx?.missing?"A Codex CLI nem található":cx?"Nincs bejelentkezve":"Állapot lekérése…");
   if(cx?.loggedIn) row.append(settingsButton("Új chat",()=>{settingsDialog.close();startProfile(null,"codex");}));
   row.append(settingsButton(cx?.loggedIn?"Bejelentkezés másik fiókkal":"Codex csatlakoztatása",()=>loginFromSettings(codexAccount)));
-  list.append(row);
+  addUsageCard(list, "codex", row, cx?.loggedIn);
   for(const a of accounts()){
     const state=accStatus.get(a.id);
     const r=accountRow("Claude · "+a.name,state?.loggedIn?[state.email,state.plan].filter(Boolean).join(" · ") || "Bejelentkezve":state?"Nincs bejelentkezve":"Állapot lekérése…");
-    if(state?.loggedIn) r.append(settingsButton("Használat",()=>{settingsDialog.close();switchModel(a.id,cfg.claudeModel || "");}),
+    if(state?.loggedIn) r.append(settingsButton("Új chat",()=>{settingsDialog.close();startProfile(null,a.id);}),
       settingsButton("Code-chatek importálása",()=>{settingsDialog.close();return openClaudeImport(a.id);}));
     r.append(settingsButton("Bejelentkezés",()=>loginFromSettings(a)));
     if(a.id!=="default")r.append(settingsButton("Eltávolítás",async()=>{
       if(!confirm("Eltávolítod a(z) „"+a.name+"” helyi Claude-fiókot?"))return;
       await N.accounts.remove(a.dir);cfg.accounts=accounts().filter(x=>x.id!==a.id);
       if(cfg.provider===a.id)cfg.provider="fcc";
-      await N.config.set(cfg);accStatus.delete(a.id);
+      await N.config.set(cfg);accStatus.delete(a.id);usageSnapshots.delete(a.id);
       if(chat?.provider===a.id){chat.provider="fcc";chat.model=cfg.model || defaultModel();restartSession(chat);updateChips();}
       drawAiAccounts();
     }));
-    list.append(r);
+    addUsageCard(list, a.id, r, state?.loggedIn);
   }
   $("#settingsFcc").textContent=$("#fccText").textContent;
 }
@@ -69,7 +149,7 @@ function drawMail(state){
     accountsList.append(row);
   }
   mailConnected=connected;
-  $("#outboxSection").hidden=!connected || settingsTab!=="connections";
+  $("#outboxSection").hidden=!connected || settingsTab!=="gmail";
   const list=$("#gmailOutbox");list.replaceChildren();
   if(!state.batches?.length){list.textContent="Még nincs sorba állított levél.";return;}
   for(const batch of state.batches){
@@ -114,15 +194,25 @@ $("#gmailOAuth").onclick=()=>mailAction(()=>N.mail.oauth());
 $("#gmailHelp").onclick=()=>N.mail.passwordPage().catch(e=>toast(e.message,true));
 document.querySelectorAll("[data-settings]").forEach(button=>button.onclick=()=>{
   settingsTab=button.dataset.settings;
+  $(".settings-body").scrollTop=0;
   document.querySelectorAll("[data-settings]").forEach(tab=>tab.setAttribute("aria-pressed",tab===button));
   document.querySelectorAll("[data-panel]").forEach(panel=>{
     panel.hidden=panel.dataset.panel!==settingsTab || (panel.id==="outboxSection" && !mailConnected);
   });
+  if (settingsTab==="ai") {drawAiAccounts();refreshAi();}
+  if (settingsTab==="gmail") refreshMail(true);
+  if (settingsTab==="updates") refreshUpdate();
 });
 $("#settingsClose").onclick=()=>settingsDialog.close();
+$("#openVoiceSettings").onclick=()=>{settingsDialog.close();$("#voiceSettings").click();};
 $("#accBtn").onclick=()=>{
-  settingsDialog.showModal();drawAiAccounts();refreshAccounts().then(()=>{if(settingsDialog.open)drawAiAccounts();}).catch(e=>toast(e.message,true));
-  refreshMail(true);clearInterval(mailTimer);refreshUpdate();mailTimer=setInterval(()=>{refreshMail();refreshUpdate();},3000);
+  settingsDialog.showModal();
+  $('[data-settings="ai"]').click();
+  clearInterval(mailTimer);
+  mailTimer=setInterval(()=>{
+    if (settingsTab==="gmail") refreshMail();
+    if (settingsTab==="updates") refreshUpdate();
+  },3000);
 };
 settingsDialog.addEventListener("close",()=>{clearInterval(mailTimer);mailGeneration++;mailLoading=false;$("#gmailPassword").value="";});
 
@@ -139,7 +229,7 @@ function showSpotifyAccount(state){
   $("#spotifyDisconnect").hidden=!state.connected;
   $("#spotifyConnection").textContent=state.connected?"A Spotify playlist-hozzáférése aktív.":"A playlist-szerkesztéshez engedélyezd a Spotify-fiókodat.";
 }
-$('[data-settings="connections"]').addEventListener("click",()=>N.spotify.status().then(showSpotifyAccount).catch(error=>{
+$('[data-settings="spotify"]').addEventListener("click",()=>N.spotify.status().then(showSpotifyAccount).catch(error=>{
   $("#spotifyConnection").textContent=error.message;
 }));
 $("#spotifyConnect").onsubmit=async event=>{

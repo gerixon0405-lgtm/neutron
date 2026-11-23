@@ -136,7 +136,46 @@ async function connect() {
       await wait("document.querySelector('#composerFiles').hidden");
     } finally { fs.rmSync(fixtures,{recursive:true,force:true}); }
 
+    const thinking = await evaluate(`(async()=>{
+      newChat();
+      const original=chat;
+      live.set(original.id,{});
+      const turn=newTurn(original);
+      turn.started=Date.now()-62000;
+      setBusyUi();
+      if(!document.querySelector('.typing') || document.querySelector('#chatClock time').textContent!=='1:02') return false;
+      const block={type:'thinking',text:'Első gondolat',expanded:true};
+      appendBlock(original,turn,block);
+      document.querySelector('.think summary').click();
+      newChat();
+      if(!document.querySelector('#chatClock').hidden) return false;
+      block.text+=' és a folytatása';
+      schedule(original,block);
+      await selectChat(original.id);
+      const details=document.querySelector('.think');
+      if(details.open || !details.classList.contains('live') || !details.textContent.includes('és a folytatása')) return false;
+      details.querySelector('summary').click();
+      newChat(); await selectChat(original.id);
+      if(!document.querySelector('.think').open || document.querySelector('#chatClock').hidden) return false;
+      finishTurn(original,turn);
+      return document.querySelector('#chatClock').hidden && turn.elapsedMs>=62000 &&
+        document.querySelector('.turn-meta').textContent===elapsedTime(turn.elapsedMs) && document.querySelector('.think').open;
+    })()`);
+    if(!thinking) throw Error("Thinking and elapsed time were lost on chat switches");
     await evaluate("document.querySelector('#accBtn').click()");
+    const quota = await evaluate(`(()=>{
+      if(document.querySelector('[data-panel=ai]').hidden) return false;
+      const card=document.createElement('div');
+      paintUsage(card,{rows:[{window:'session',minutes:300,percent:24,reset:1795526460000},
+        {window:'weekly',scope:'Sonnet',percent:91,reset:1795526460000}]});
+      return card.querySelector('progress').value===24 && card.querySelector('progress.near-limit').value===91 &&
+        !!card.querySelector('time').dateTime && card.textContent.includes('Heti keret · Sonnet');
+    })()`);
+    if(!quota) throw Error("AI quota windows did not render");
+    if(process.env.NEUTRON_TEST_QUOTAS)
+      await wait("document.querySelector('[data-usage-account=codex] progress') && document.querySelector('[data-usage-account=default] progress')");
+    await screenshot("settings");
+    await evaluate("document.querySelector('[data-settings=appearance]').click()");
     const {root}=await call("DOM.getDocument",{});
     const {nodeId}=await call("DOM.querySelector",{nodeId:root.nodeId,selector:"#appearanceForm .background-file"});
     await call("DOM.setFileInputFiles",{nodeId,files:[path.resolve("wallpapers/nebula.webp")]});

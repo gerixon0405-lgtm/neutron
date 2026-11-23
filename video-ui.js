@@ -1,5 +1,6 @@
 "use strict";
 let selectedVideo, selectedMusic, videoBroll=[], videoJob, videoRunning=false;
+let videoStarted, videoClockInterval;
 const disabledDuringVideo=["videoPick","videoBroll","videoMusic","videoModel","videoBrief","videoPace","videoLanguage",
   "videoStart","videoEnd","videoTranscript","videoSourceWeb","videoRender","videoFormat","videoQuality","videoCaptions","videoClicks"];
 
@@ -29,6 +30,17 @@ function videoState(message,percent){
   if(percent!=null)$("#videoProgress").value=percent;
 }
 function busyVideo(busy){
+  const clock=$("#videoClock"), time=clock.querySelector("time");
+  if(busy && !videoRunning){
+    videoStarted=Date.now();
+    clock.hidden=false;
+    time.textContent="0:00";
+    videoClockInterval=setInterval(()=>{time.textContent=elapsedTime(Date.now()-videoStarted);},1000);
+  }else if(!busy){
+    clearInterval(videoClockInterval);
+    if(videoRunning)time.textContent=elapsedTime(Date.now()-videoStarted);
+  }
+  clock.classList.toggle("running",busy);
   videoRunning=busy;
   $("#cancelVideo").hidden=!busy;
   for(const id of disabledDuringVideo)$("#"+id).disabled=busy;
@@ -39,6 +51,7 @@ function selectedSource(value){
   selectedVideo=value;
   $("#videoSource").textContent=value.name;
   resetReview();
+  $("#videoClock").hidden=true;
   videoState("Add meg a vágási instrukciót, majd készíts tervet.");
   busyVideo(false);
 }

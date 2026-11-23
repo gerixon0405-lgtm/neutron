@@ -65,6 +65,8 @@ jobs:
         run: node scripts/test-chat-input.js
       - name: Test local Claude Desktop session import
         run: node scripts/test-claude-import.js
+      - name: Test provider usage windows
+        run: node scripts/test-account-usage.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

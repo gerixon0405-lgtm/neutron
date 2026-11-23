@@ -46,6 +46,8 @@ function run(chat, text, notify, done, jpeg=null) {
     try { e = JSON.parse(line); } catch { return; }
     if (["item.started","item.completed"].includes(e.type) && /command_execution|tool_call|file_change/.test(e.item?.type || "")) notify({kind:"effects"});
     if (e.type === "thread.started") notify({ kind: "thread", id: e.thread_id });
+    if (["item.started", "item.updated", "item.completed"].includes(e.type) && e.item?.type === "reasoning")
+      notify({ kind:"thinking", id:e.item.id, text:e.item.text || "", done:e.type === "item.completed" });
     if (e.type === "item.completed" && e.item?.type === "agent_message") notify({ kind: "message", text: e.item.text });
     if (e.type === "item.completed" && e.item?.type === "command_execution")
       notify({ kind: "command", name: e.item.command, result: (e.item.aggregated_output || "").slice(-12000), failed: e.item.exit_code !== 0 });
@@ -53,7 +55,10 @@ function run(chat, text, notify, done, jpeg=null) {
       notify({kind:"files",paths:(e.item.changes || []).filter(f=>f.kind!=="delete").map(f=>f.path)});
     if (e.type==="item.completed" && e.item?.type==="mcp_tool_call" && e.item.server==="neutron" && e.item.status==="completed" && !e.item.result?.isError)
       notify({kind:"output",tool:"mcp__neutron__"+e.item.tool,input:e.item.arguments,body:(e.item.result?.content || []).map(x=>x.text || "").join("\n")});
-    if (e.type === "turn.completed") completed = true;
+    if (e.type === "turn.completed") {
+      completed = true;
+      if (e.usage) notify({ kind:"tokens", input:e.usage.input_tokens, output:e.usage.output_tokens });
+    }
     if (e.type === "turn.failed" || e.type === "error") problem = e.error?.message || e.message || "A Codex nem adott választ.";
   });
   child.stderr.on("data", d => { diagnostics = (diagnostics + d).slice(-1800); });

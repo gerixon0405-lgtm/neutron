@@ -383,6 +383,15 @@ ipcMain.handle("maintenance:optimize", () => new Promise((resolve, reject) => {
 ipcMain.handle("accounts:create", () => createAccountDir());
 ipcMain.handle("accounts:remove", (_, dir) => removeAccountDir(dir));
 ipcMain.handle("accounts:status", (_, id) => accountStatus(id));
+const usageRequests = new Map();
+ipcMain.handle("accounts:usage", (_, id) => {
+  if (id !== "codex" && id !== "default" && !loadConfig().accounts?.some(account => account.id === id)) return [];
+  if (!usageRequests.has(id)) {
+    const query = require("./account-usage").readUsage(launchSpec(id), id === "codex");
+    usageRequests.set(id, query.finally(() => usageRequests.delete(id)));
+  }
+  return usageRequests.get(id);
+});
 
 ipcMain.handle("uploads:pick", async (_,chatId)=>{
   const result=await dialog.showOpenDialog(win,{properties:["openFile","multiSelections"]});

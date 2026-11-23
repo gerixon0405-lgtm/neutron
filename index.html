@@ -49,6 +49,7 @@
       </button>
       <div class="title" id="title">Neutron</div>
       <div class="spacer"></div>
+      <span class="run-clock" id="chatClock" hidden><span class="run-indicator" aria-hidden="true"></span><span id="chatActivity">Folyamatban</span><time aria-label="Eltelt idő"></time></span>
       <button class="chip" id="projectHubBtn" type="button" title="Projektváltás" aria-haspopup="dialog"><span aria-hidden="true">▦</span><span id="projectHubName">Projektek</span></button>
       <button class="chip" id="dirChip" title="Munkakönyvtár"><span>📁</span><span id="dirName">~</span></button>
 
@@ -130,7 +131,7 @@
               <button class="btn go" id="videoPlan" type="submit">Vágási terv készítése</button>
             </form>
             <div class="video-workbench">
-              <div class="video-status" aria-live="polite"><p id="videoStatus">Válassz egy forrásvideót és indítsd el a tervezést.</p><progress id="videoProgress" max="100" hidden></progress>
+              <div class="video-status"><p id="videoStatus" role="status">Válassz egy forrásvideót és indítsd el a tervezést.</p><span class="run-clock" id="videoClock" hidden><span class="run-indicator" aria-hidden="true"></span><time aria-label="Eltelt idő"></time></span><progress id="videoProgress" max="100" hidden></progress>
                 <button type="button" class="btn" id="cancelVideo" hidden>Leállítás</button></div>
               <div id="videoReview" hidden>
                 <div class="video-review-title"><h3 id="videoPlanTitle"></h3><p id="videoSummary"></p></div>
@@ -159,17 +160,42 @@
   </main>
 </div>
 <dialog id="settingsDialog" class="studio" aria-labelledby="settingsTitle">
-  <div class="studio-head"><div><h2 id="settingsTitle">Beállítások</h2><p>Megjelenés, kapcsolatok és frissítések</p></div><button id="settingsClose" class="dismiss" aria-label="Bezárás">×</button></div>
-  <nav class="settings-tabs" aria-label="Beállítások">
-    <button type="button" data-settings="appearance" aria-pressed="true">Megjelenés</button>
-    <button type="button" data-settings="connections" aria-pressed="false">Kapcsolatok</button>
-    <button type="button" data-settings="discord" aria-pressed="false">Discord</button>
-    <button type="button" data-settings="updates" aria-pressed="false">Frissítések</button>
-  </nav>
+  <div class="studio-head"><div><h2 id="settingsTitle">Beállítások</h2></div><button id="settingsClose" class="dismiss" aria-label="Bezárás">×</button></div>
+  <div class="settings-layout">
+    <nav class="settings-tabs" aria-label="Beállítások kategóriái">
+      <div class="settings-group" aria-label="Neutron">
+        <button type="button" data-settings="ai" aria-pressed="true"><span aria-hidden="true">✦</span> AI-fiókok</button>
+        <button type="button" data-settings="appearance" aria-pressed="false"><span aria-hidden="true">◐</span> Megjelenés</button>
+        <button type="button" data-settings="voice" aria-pressed="false"><span aria-hidden="true">〰</span> Hangasszisztens</button>
+      </div>
+      <div class="settings-group" aria-label="Integrációk">
+        <small>Integrációk</small>
+        <button type="button" data-settings="gmail" aria-pressed="false"><span aria-hidden="true">✉</span> Gmail</button>
+        <button type="button" data-settings="spotify" aria-pressed="false"><span aria-hidden="true">♫</span> Spotify</button>
+        <button type="button" data-settings="discord" aria-pressed="false"><span aria-hidden="true">▤</span> Discord</button>
+      </div>
+      <div class="settings-group">
+        <button type="button" data-settings="updates" aria-pressed="false"><span aria-hidden="true">↻</span> Frissítések</button>
+      </div>
+    </nav>
   <div class="settings-body">
-    <section id="appearanceSection" data-panel="appearance">
+    <section data-panel="ai">
+      <header class="settings-section-head"><div><h3>AI-fiókok</h3><p>Fiókok, előfizetési keretek és visszaállítási időpontok</p></div>
+        <button type="button" class="btn" id="refreshUsage">Frissítés</button></header>
+      <div id="aiAccounts"></div>
+    </section>
+    <section data-panel="ai">
+      <h3>Kapcsolatok kezelése</h3>
+      <form id="addClaudeForm"><label>Új Claude-fiók neve<input id="newAccountName" maxlength="60" placeholder="Például Munka" required></label><button class="btn">Claude-fiók hozzáadása</button></form>
+      <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small><small>A proxyhoz nincs elérhető fiókszintű kvóta.</small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
+    </section>
+    <section id="appearanceSection" data-panel="appearance" hidden>
       <h3>Személyre szabás</h3>
       <form id="appearanceForm" class="appearance-form"></form>
+    </section>
+    <section data-panel="voice" hidden><h3>Hangasszisztens</h3>
+      <p>Gyorsbillentyű, mikrofon, beszédfelismerés és felolvasás.</p>
+      <button class="btn" id="openVoiceSettings">Hangasszisztens beállításai</button>
     </section>
     <section data-panel="discord" hidden><h3>Discord-bot</h3>
       <p id="discordConnection" role="status">Állapot lekérése…</p>
@@ -187,14 +213,14 @@
     <section data-panel="discord" hidden><h3>Discord-műveletek</h3>
       <p id="discordFeedback" role="status"></p><div id="discordActions"></div>
     </section>
-    <section data-panel="connections" hidden><h3>Spotify-playlistek</h3>
+    <section data-panel="spotify" hidden><h3>Spotify-playlistek</h3>
       <p id="spotifyConnection" role="status"></p>
       <form id="spotifyConnect"><label>Spotify Client ID<input id="spotifyClientId" autocomplete="off" required maxlength="32"></label>
         <button class="btn go">Engedélyezés a Spotifyon</button></form>
       <p>A Spotify fejlesztői alkalmazásban add meg átirányítási címnek: <code>http://127.0.0.1:47812/callback</code>.</p>
       <button class="btn" id="spotifyDisconnect" hidden>Leválasztás</button>
     </section>
-    <section data-panel="connections" hidden><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
+    <section data-panel="gmail" hidden><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
       <div id="gmailAccounts"></div><div id="gmailLogin">
         <form id="gmailForm"><label>Gmail- vagy Workspace-cím<input type="email" id="gmailEmail" autocomplete="username" required></label>
         <label>Google-alkalmazásjelszó<input type="password" id="gmailPassword" autocomplete="off" required></label>
@@ -203,12 +229,9 @@
       </div>
       <p id="gmailFeedback" role="status"></p>
     </section>
-    <section id="outboxSection" data-panel="connections" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
+    <section id="outboxSection" data-panel="gmail" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
     <section data-panel="updates" hidden><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div><button class="btn" id="showReleaseNotes">Kiadási megjegyzések</button></section>
-    <section data-panel="connections" hidden><h3>AI-fiókok</h3><div id="aiAccounts"></div>
-      <form id="addClaudeForm"><label>Új Claude-fiók neve<input id="newAccountName" maxlength="60" placeholder="Például Munka" required></label><button class="btn">Claude-fiók hozzáadása</button></form>
-      <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
-    </section>
+  </div>
   </div>
 </dialog>
 <dialog id="projectHub" class="studio compact" aria-labelledby="projectHubTitle">

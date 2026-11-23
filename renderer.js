@@ -20,6 +20,7 @@ const open = new Map();     // chatId -> chat object (loaded)
 const pendingFiles = new Map();
 const live = new Map();     // chatId -> { idx: Map(index->block), streamed: Set(msgId), stderr: "" }
 const blockEls = new WeakMap();
+const chatScroll = new WeakMap();
 let slashMeta = { slash: [], term: [] };
 let term = null, fit = null, termChatId = null;
 
@@ -125,7 +126,13 @@ function renderList() {
 async function refreshList() { chats = await N.chats.list(); renderList(); }
 
 // ---------- chats ----------
+function rememberChatScroll() {
+  if (!chat || view !== "chat") return;
+  chatScroll.set(chat, nearBottom() ? null : $("#scroll").scrollTop);
+}
+
 function newChat(character, provider = cfg.provider || "fcc") {
+  rememberChatScroll();
   const c = {
     id: "chat-" + crypto.randomUUID().slice(0, 12), title: "Új csevegés", items: [],
     projectId: activeProject()?.id || "", cwd: activeProject()?.cwd || cfg.lastCwd || home, provider, effort: "", mode: cfg.mode || "default",
@@ -149,6 +156,7 @@ async function selectChat(id) {
   const c = await getChat(id);
   if (!c) return toast("Nem sikerült betölteni a csevegést.", true);
   if ((cfg.activeProject || "") !== (c.projectId || "")) return;
+  rememberChatScroll();
   chat = c;
   if (view !== "chat") setView("chat");
   renderChat();
@@ -191,7 +199,9 @@ function renderChat() {
   if (!chat.items.length) { setBusyUi(); return renderHero(); }
   chat.items.forEach((it) => th.append(itemEl(it)));
   setBusyUi();
-  scrollDown(true);
+  const previousScroll = chatScroll.get(chat);
+  if (previousScroll == null) scrollDown(true);
+  else $("#scroll").scrollTo({ top:previousScroll, behavior:"instant" });
 }
 
 function renderHero() {
@@ -241,8 +251,17 @@ function itemEl(it) {
   const body = wrap.querySelector(".body");
   if (it.auto) body.insertAdjacentHTML("afterbegin", `<div class="meta auto">↻ Magától folytatta</div>`);
   (it.blocks || []).forEach((b) => body.append(blockEl(b)));
-  if (it.meta) body.insertAdjacentHTML("beforeend", `<div class="meta">${esc(it.meta)}</div>`);
+  if (chat?.items.at(-1) === it && live.has(chat.id)) {
+    wrap.classList.add("streaming");
+    if (!it.blocks.length) body.insertAdjacentHTML("beforeend", '<div class="typing" aria-label="Válasz előkészítése"><i></i><i></i><i></i></div>');
+  }
+  renderTurnMeta(it, body);
   return wrap;
+}
+
+function renderTurnMeta(it, body) {
+  const label = [it.elapsedMs == null ? "" : elapsedTime(it.elapsedMs), it.meta].filter(Boolean).join(" · ");
+  if (label) body.insertAdjacentHTML("beforeend", `<div class="meta turn-meta">${esc(label)}</div>`);
 }
 
 function blockEl(b) {
@@ -253,8 +272,12 @@ function blockEl(b) {
   else if (b.type === "thinking") {
     el = document.createElement("details");
     el.className = "think";
-    el.innerHTML = `<summary><span>Gondolkodás</span></summary><div class="tx"></div>`;
-    el.querySelector(".tx").textContent = b.text;
+    el.innerHTML = '<summary><span>Gondolkodás</span></summary><div class="tx"></div>';
+    el.open = b.expanded ?? !b.done;
+    el.querySelector("summary").onclick = event => {
+      event.preventDefault();
+      b.expanded = el.open = !el.open;
+    };
   } else if (b.type === "tool") {
     el = document.createElement("details");
     el.className = "tool";
@@ -294,7 +317,7 @@ function updateBlock(b) {
   if (!el) return;
   if (b.type === "text") setMd(el, (b.hu ? repairHungarian(b.text) : b.text).replace(WAKE_RE, "").trimEnd());
   else if (b.type === "thinking") {
-    el.querySelector(".tx").textContent = b.text;
+    el.querySelector(".tx").textContent = b.text || (b.done ? "A modell ehhez a lépéshez nem küldött összefoglalót." : "");
     el.classList.toggle("live", !b.done);
     el.querySelector("summary span").textContent = b.done ? "Gondolkodás" : "Gondolkodik…";
   } else if (b.type === "tool") {
@@ -422,16 +445,19 @@ function answerPerm(b, ans) {
   renderQuickPermission();
 }
 
-let rafPending = new Set();
+const rafPending = new Set();
+let updateFrame;
 function schedule(c, b) {
   if (!chat || c.id !== chat.id) return;
   rafPending.add(b);
-  if (rafPending.size > 1) return;
-  requestAnimationFrame(() => {
+  if (updateFrame) return;
+  updateFrame = requestAnimationFrame(() => {
+    updateFrame = null;
     const stick = nearBottom();
-    rafPending.forEach(updateBlock);
+    const visible = [...rafPending].filter(block => blockEls.get(block)?.isConnected);
+    visible.forEach(updateBlock);
     rafPending.clear();
-    if (stick) scrollDown();
+    if (visible.length && stick) scrollDown();
   });
 }
 
@@ -444,11 +470,31 @@ function appendBlock(c, it, b) {
   const stick = nearBottom();
   wrap.querySelector(".body").querySelector(".typing")?.remove();
   wrap.querySelector(".body").append(blockEl(b));
+  if (b.type === "thinking" || b.type === "status") updateChatClock();
   if (stick) scrollDown();
 }
 
 const nearBottom = () => { const s = $("#scroll"); return s.scrollHeight - s.scrollTop - s.clientHeight < 140; };
 function scrollDown(instant) { const s = $("#scroll"); s.scrollTo({ top: s.scrollHeight, behavior: instant || document.documentElement.dataset.motion==="reduced" ? "instant" : "smooth" }); }
+
+function elapsedTime(ms) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const clock = String(seconds % 60).padStart(2, "0");
+  return minutes < 60 ? `${minutes}:${clock}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${clock}`;
+}
+function updateChatClock() {
+  const clock = $("#chatClock");
+  const turn = chat && view === "chat" && live.has(chat.id) && chat.items.at(-1);
+  clock.hidden = !turn?.started;
+  if (clock.hidden) return;
+  const last = turn.blocks.at(-1);
+  const label = last?.type === "status" ? "Újrapróbálásra vár" :
+    !last || (last.type === "thinking" && !last.done) ? "Gondolkodik" : "Folyamatban";
+  $("#chatActivity").textContent = label;
+  clock.querySelector("time").textContent = elapsedTime(Date.now() - turn.started);
+}
+setInterval(updateChatClock, 1000);
 
 function setBusyUi() {
   const busy = chat && live.has(chat.id);
@@ -458,6 +504,7 @@ function setBusyUi() {
   if (busy) showEffort(false);
   $("#effortSlider").disabled = $("#resetEffort").disabled = !!busy || view === "term";
   $("#dirChip").disabled = !!(chat && (chat.items.length || chat.projectId));
+  updateChatClock();
   renderList();
 }
 
@@ -489,9 +536,7 @@ function newTurn(c, auto = false) {
   const it = { role: "assistant", blocks: [], started:Date.now(), auto };
   c.items.push(it);
   if (chat && c.id === chat.id) {
-    const el = itemEl(it);
-    el.querySelector(".body").insertAdjacentHTML("beforeend", `<div class="typing"><i></i><i></i><i></i></div>`);
-    $("#thread").append(el);
+    $("#thread").append(itemEl(it));
     scrollDown();
   }
   return it;
@@ -688,6 +733,16 @@ N.cc.onEvent(({ chatId, ev }) => {
     if (!st) return;
     if (ev.kind === "effects") st.effects=true;
     if (ev.kind === "thread") { c.codexThread = ev.id; save(c); }
+    if (ev.kind === "tokens") currentTurn(c).meta = `${ev.input || 0} be / ${ev.output || 0} ki token`;
+    if (ev.kind === "thinking") {
+      const it = currentTurn(c);
+      const block = it.blocks.find(b => b.type === "thinking" && b.id === ev.id);
+      if (block) {
+        block.text = ev.text;
+        block.done = ev.done;
+        schedule(c, block);
+      } else appendBlock(c, it, { type:"thinking", id:ev.id, text:ev.text, done:ev.done, expanded:true });
+    }
     if (ev.kind==="files") { const it=currentTurn(c);it.changedPaths=[...(it.changedPaths || []),...ev.paths]; }
     if (ev.kind === "output") receiveOutput(c,currentTurn(c),ev.tool,ev.input,ev.body);
     if (ev.kind === "message") appendBlock(c, currentTurn(c), { type: "text", text: ev.text });
@@ -719,7 +774,7 @@ N.cc.onEvent(({ chatId, ev }) => {
     else if (e.type === "content_block_start") {
       const cb = e.content_block;
       const b = cb.type === "tool_use" ? { type: "tool", id: cb.id, name: cb.name, json: "" }
-        : cb.type === "thinking" || cb.type === "redacted_thinking" ? { type: "thinking", text: "" }
+        : cb.type === "thinking" || cb.type === "redacted_thinking" ? { type: "thinking", text: cb.thinking || "", expanded:true }
         : cb.type === "text" ? { type: "text", text: cb.text || "" } : null;
       if (!b) return;
       st.idx.set(e.index, b);
@@ -747,7 +802,8 @@ N.cc.onEvent(({ chatId, ev }) => {
     const it = currentTurn(c);
     for (const cb of ev.message.content || []) {
       if (cb.type === "text" && cb.text) appendBlock(c, it, { type: "text", text: cb.text });
-      else if (cb.type === "thinking") appendBlock(c, it, { type: "thinking", text: cb.thinking, done: true });
+      else if (cb.type === "thinking" || cb.type === "redacted_thinking")
+        appendBlock(c, it, { type: "thinking", text: cb.thinking || "", done:true, expanded:true });
       else if (cb.type === "tool_use") appendBlock(c, it, { type: "tool", id: cb.id, name: cb.name, input: cb.input });
     }
     return;
@@ -789,18 +845,19 @@ N.cc.onEvent(({ chatId, ev }) => {
     const it = currentTurn(c);
     c.sessionId = ev.session_id || c.sessionId;
     if(ev.is_error && retryRateLimit(c,st,it,[ev.result,ev.errors,st.stderr,...it.blocks.filter(b=>b.type==="text").map(b=>b.text)].filter(Boolean).join("\n")))return;
-    if (ev.is_error && ev.result) appendBlock(c, it, { type: "error", text: ev.result });
+    const error = ev.result || ev.errors?.join("\n");
+    if (ev.is_error && error) appendBlock(c, it, { type: "error", text: error });
     else if (!it.blocks.some((b) => b.type === "text") && typeof ev.result === "string" && ev.result.trim())
       appendBlock(c, it, { type: "text", text: ev.result });
     c.sessionId = ev.session_id || c.sessionId;
-    const secs = ((ev.duration_ms || 0) / 1000).toFixed(1);
-    const tok = ev.usage ? ` · ${(ev.usage.input_tokens || 0) + (ev.usage.cache_read_input_tokens || 0)} be / ${ev.usage.output_tokens || 0} ki token` : "";
-    it.meta = `${secs} mp${ev.num_turns ? ` · ${ev.num_turns} lépés` : ""}${tok}`;
+    const tok = ev.usage ? `${(ev.usage.input_tokens || 0) + (ev.usage.cache_read_input_tokens || 0)} be / ${ev.usage.output_tokens || 0} ki token` : "";
+    it.meta = [ev.num_turns ? `${ev.num_turns} lépés` : "", tok].filter(Boolean).join(" · ");
     finishTurn(c, it);
   }
 });
 
 function finishTurn(c, it) {
+  it.elapsedMs = Math.max(0, Date.now() - it.started);
   for(const b of it.blocks) if(b.hu && b.type==="text") b.text=repairHungarian(b.text);
   const paths=new Set(it.changedPaths || []);
   delete it.changedPaths;
@@ -829,7 +886,7 @@ function finishTurn(c, it) {
       el.classList.remove("streaming");
       el.querySelector(".typing")?.remove();
       it.blocks.forEach(updateBlock);
-      if (it.meta) el.querySelector(".body").insertAdjacentHTML("beforeend", `<div class="meta">${esc(it.meta)}</div>`);
+      renderTurnMeta(it, el.querySelector(".body"));
     }
     setBusyUi();
   } else renderList();
@@ -1362,7 +1419,7 @@ function startTerm(extra = []) {
 
 function setView(v, start) {
   if (v === "term" && live.has(chat.id)) return toast("Előbb várd meg a választ, vagy állítsd le.");
-  view = v; renderEffort();
+  view = v; renderEffort(); updateChatClock();
   document.querySelectorAll("#viewToggle button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   movePill();
   $("#chatView").classList.toggle("hidden", v !== "chat");
