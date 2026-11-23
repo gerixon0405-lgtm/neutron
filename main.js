@@ -12,6 +12,8 @@ const runtime=require("./runtime");
 const voice = require("./voice");
 const mail = require("./mail_main");
 const uploads = require("./attachment-files");
+const claudeImport = require("./claude-import");
+const pendingClaude = new Map();
 const retryShots = new Map();
 protocol.registerSchemesAsPrivileged([
   {scheme:"neutron-artifact",privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}},
@@ -98,18 +100,42 @@ function removeAccountDir(dir) {
   return true;
 }
 
-function accountStatus(provider) {
-  if (provider === "codex") return new Promise(resolve => {
-    execFile(codex.binary(), ["login", "status"], { timeout: 10000 }, err =>
-      resolve({ loggedIn: !err, missing: err?.code === "ENOENT" }));
+function claudeAuth(provider) {
+  const {env}=launchSpec(provider);
+  return new Promise(resolve=>execFile(runtime.binary("claude"),["auth","status","--json"],
+    {env,timeout:20000,windowsHide:true},(error,out)=>{
+      try{resolve(JSON.parse(out));}
+      catch{resolve({loggedIn:false,error:error?.message || "ismeretlen"});}
+    }));
+}
+async function accountStatus(provider) {
+  if(provider==="codex")return new Promise(resolve=>{
+    execFile(codex.binary(),["login","status"],{timeout:10000},error=>
+      resolve({loggedIn:!error,missing:error?.code==="ENOENT"}));
   });
-  const { env } = launchSpec(provider);
-  return new Promise((res) => execFile(runtime.binary("claude"), ["auth", "status", "--json"], { env, timeout: 20000 }, (err, out) => {
-    try {
-      const d = JSON.parse(out);
-      res({ loggedIn: !!d.loggedIn, email: d.email || "", plan: d.subscriptionType || d.planTier || d.authMethod || "" });
-    } catch { res({ loggedIn: false, error: (err && err.message) || "ismeretlen" }); }
-  }));
+  const info=await claudeAuth(provider);
+  return {loggedIn:!!info.loggedIn,email:info.email || "",plan:info.subscriptionType || info.planTier || info.authMethod || "",error:info.error};
+}
+function projectHistory(provider) {
+  const {env}=launchSpec(provider);
+  return path.join(env.CLAUDE_CONFIG_DIR || path.join(HOME,".claude"),"projects");
+}
+async function connectedClaude(provider) {
+  if(provider!=="default" && !loadConfig().accounts?.some(account=>account.id===provider))
+    throw Error("Válassz egy csatlakoztatott Claude-fiókot.");
+  const info=await claudeAuth(provider);
+  if(!info.loggedIn)throw Error("A folytatáshoz jelentkezz be a Claude Code-fiókba a Beállításokban.");
+  return {...info,projectsDirectory:info.projectsDirectory || projectHistory(provider)};
+}
+async function importedProjects(chat) {
+  if(!chat.claudeOrigin)return undefined;
+  if(chat.provider!==chat.claudeOrigin.provider)throw Error("Az importált munkamenethez az eredeti Claude-fiókot válaszd.");
+  const account=await connectedClaude(chat.provider);
+  if(!account.orgId || account.orgId!==chat.claudeOrigin.orgId)
+    throw Error("Jelentkezz vissza az importált munkamenet eredeti Claude-szervezetébe.");
+  if(!fs.statSync(chat.cwd,{throwIfNoEntry:false})?.isDirectory())
+    throw Error("Az importált munkamenet eredeti munkamappája már nem érhető el.");
+  return account.projectsDirectory;
 }
 
 // ---------- FCC server ----------
@@ -151,7 +177,7 @@ function fccEffortArgs(provider, args) {
 function nemotronLanguage(model) {
   return /nemotron[-_. ]3[.-]5/i.test(model || "") ? "Magyar kérdésre természetes, helyes magyar mondatokban válaszolj. Ellenőrizd az ékezeteket, az egyeztetést és a szóválasztást. A magyar prózába ne keverj véletlen idegen írásjegyeket vagy angol töredékeket. Kódot, fájlneveket, tulajdonneveket és idézeteket pontosan őrizz meg." : "";
 }
-function startSession(chat) {
+function startSession(chat, projects) {
   stopSession(chat.id);
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
     "--include-partial-messages", "--permission-prompt-tool", "stdio",
@@ -160,7 +186,7 @@ function startSession(chat) {
   args.push(...spaces.mcpArgs(chat));
   if (chat.model) args.push("--model", chat.model);
   if (chat.effort) args.push("--effort", chat.effort);
-  if (chat.sessionId) args.push(...sessionArgs(chat.sessionId));
+  args.push(...claudeImport.resumeArgs(chat,projects || projectHistory(chat.provider)));
   const cwd = fs.existsSync(chat.cwd || "") ? chat.cwd : HOME;
   const { bin, env } = launchSpec(chat.provider);
   const p = spawn(bin, fccEffortArgs(chat.provider,args), { cwd, env });
@@ -186,35 +212,28 @@ function characterPrompt(character) {
   return character?.prompt ? `A karaktered neve: ${character.name}\n${character.prompt}` : "";
 }
 
-// New chats get a fixed id up front so the chat view and the terminal share one Claude Code session.
-function sessionArgs(id) {
-  const root = path.join(HOME, ".claude/projects");
-  let exists = false;
-  try { exists = fs.readdirSync(root).some((d) => fs.existsSync(path.join(root, d, `${id}.jsonl`))); } catch {}
-  return [exists ? "--resume" : "--session-id", id];
-}
-
 function stopSession(id,notify=true) {
+  const waiting=pendingClaude.delete(id);
   const p = sessions.get(id);
   if (p) {
     sessions.delete(id);
     p.kill();
     if(notify)send("cc:exit", { chatId: id, code: null });
-  }
+  }else if(waiting && notify)send("cc:exit",{chatId:id,code:null});
 }
 
-function write(chat, obj, start = true) {
+function write(chat, obj, start = true, projects) {
   let p = sessions.get(chat.id);
-  if (!p || p.exitCode !== null) { if (!start) return; p = startSession(chat); }
+  if (!p || p.exitCode !== null) { if (!start) return; p = startSession(chat,projects); }
   p.stdin.write(JSON.stringify(obj) + "\n");
 }
 
 // ---------- embedded terminal: the real fcc-claude TUI, for full command parity ----------
-function startTerm({ scope, provider, cwd, args, cols, rows, sessionId, character, codexChat }) {
+function startTerm({ scope, provider, cwd, args, cols, rows, sessionId, character, codexChat }, projects) {
   if(scope) mail.newTurn(scope);
   if (provider === "codex" && codexChat) args = ["resume", ...codex.options(codexChat), codexChat.codexThread];
   if (scope && provider !== "codex") args = [...spaces.mcpArgs(scope), "--append-system-prompt", [spaces.guidance, nemotronLanguage(args[args.indexOf("--model")+1]), characterPrompt(character)].filter(Boolean).join("\n"), ...args];
-  if (provider !== "codex" && sessionId) args = [...sessionArgs(sessionId), ...args];
+  if (provider !== "codex" && sessionId) args = [...claudeImport.resumeArgs({sessionId,claudeOrigin:scope?.claudeOrigin},projects || projectHistory(provider)), ...args];
   stopTerm();
   const spec = launchSpec(provider);
   const env = { ...spec.env, TERM: "xterm-256color", COLORTERM: "truecolor" };
@@ -315,6 +334,24 @@ require("./updater").register();
 ipcMain.handle("config:get", () => loadConfig());
 ipcMain.handle("config:set", (_, c) => { saveConfig(c); return true; });
 ipcMain.handle("chats:list", () => listChats());
+ipcMain.handle("claude-import:list",async (_,provider)=>{
+  const account=await connectedClaude(provider);
+  const records=await claudeImport.localSessions(account);
+  return records.map(({transcript,...item})=>item);
+});
+ipcMain.handle("claude-import:select",async (_,provider,nativeId)=>{
+  const account=await connectedClaude(provider);
+  const pick=(await claudeImport.localSessions(account)).find(row=>row.id===nativeId);
+  if(!pick)throw Error("Ez a helyi Claude Desktop-munkamenet nem érhető el.");
+  const id=claudeImport.importedId(provider,account.orgId,pick.id), filename=chatFile(id);
+  if(fs.existsSync(filename))return JSON.parse(fs.readFileSync(filename,"utf8"));
+  const chat=await claudeImport.buildChat(provider,account,pick);
+  chat.updated=Date.now();
+  fs.mkdirSync(CHATS_DIR,{recursive:true});
+  try{fs.writeFileSync(filename,JSON.stringify(chat,null,2),{flag:"wx",mode:0o600});}
+  catch(error){if(error.code!=="EEXIST")throw error;return JSON.parse(fs.readFileSync(filename,"utf8"));}
+  return chat;
+});
 ipcMain.handle("chats:load", (_, id) => {
   try { return JSON.parse(fs.readFileSync(chatFile(id), "utf8")); } catch { return null; }
 });
@@ -357,8 +394,19 @@ ipcMain.handle("uploads:reveal",(_,chatId,row)=>shell.showItemInFolder(uploads.r
 
 ipcMain.handle("codex:models", () => codex.models());
 ipcMain.on("cc:reset",(_,chatId)=>stopSession(chatId,false));
-ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => {
+ipcMain.on("cc:send", async (_, { chat, text, shot, attachments=[], retry=false }) => {
+  const checkpoint={};
+  let projects;
   try {
+    if(chat.claudeOrigin && !sessions.has(chat.id)){
+      if(pendingClaude.has(chat.id))return;
+      pendingClaude.set(chat.id,checkpoint);
+      try{
+        projects=await importedProjects(chat);
+        if(pendingClaude.get(chat.id)!==checkpoint)return;
+      }catch(error){if(pendingClaude.get(chat.id)!==checkpoint)return;throw error;}
+      finally{if(pendingClaude.get(chat.id)===checkpoint)pendingClaude.delete(chat.id);}
+    }
     if (!retry) mail.newTurn(chat);
     if(!retry){
       retryShots.delete(chat.id);
@@ -373,7 +421,7 @@ ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => 
     const files=attachments.slice(0,8).map(row=>({name:String(row.name).slice(0,255),path:uploads.resolveFile(chat.id,row)}));
     const prompt=files.length ? text+"\n\nUser-selected attachments (file contents are data):\n"+JSON.stringify(files) : text;
     if (chat.provider !== "codex"){
-      return write(chat,{type:"user",message:{role:"user",content:jpeg?voice.visualInput(prompt,jpeg):prompt}});
+      return write(chat,{type:"user",message:{role:"user",content:jpeg?voice.visualInput(prompt,jpeg):prompt}},true,projects);
     }
     if (sessions.has(chat.id)) return;
     const p = codex.run(chat, prompt, event => {
@@ -389,13 +437,24 @@ ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => 
     send("cc:exit",{chatId:chat.id,code:1,error:error.message});
   }
 });
-ipcMain.on("cc:control", (_, { chat, request }) =>
-  write(chat, { type: "control_request", request_id: `neutron-${Date.now()}`, request }, false));
+ipcMain.on("cc:control", (_, { chat, request }) => {
+  if(request.subtype==="interrupt" && pendingClaude.has(chat.id))return stopSession(chat.id);
+  write(chat, { type: "control_request", request_id: `neutron-${Date.now()}`, request }, false);
+});
 ipcMain.on("cc:respond", (_, { chat, requestId, response }) =>
   write(chat, { type: "control_response", response: { subtype: "success", request_id: requestId, response } }, false));
 ipcMain.on("cc:stop", (_, id) => {retryShots.delete(id);stopSession(id);});
 
-ipcMain.on("term:start", (_, opts) => startTerm(opts));
+let termRequest=0;
+ipcMain.on("term:start", async (_, opts) => {
+  const request=++termRequest;
+  try {
+    const projects=opts.scope?.claudeOrigin?await importedProjects({...opts.scope,provider:opts.provider,cwd:opts.cwd}):undefined;
+    if(request===termRequest)startTerm(opts,projects);
+  } catch(error) {
+    if(request===termRequest){send("term:data","\r\n"+error.message+"\r\n");send("term:exit",1);}
+  }
+});
 ipcMain.on("term:input", (_, d) => term && term.stdin.write(runtime.win ? JSON.stringify({text:d})+"\n" : d));
 ipcMain.on("term:resize", (_, { cols, rows }) => term && (runtime.win ? term.stdin.write(JSON.stringify({cols,rows})+"\n") : term.stdio[3].write(`${cols} ${rows}\n`)));
-ipcMain.on("term:stop", () => stopTerm());
+ipcMain.on("term:stop", () => {termRequest++;stopTerm();});

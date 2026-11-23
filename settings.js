@@ -29,7 +29,8 @@ function drawAiAccounts(){
   for(const a of accounts()){
     const state=accStatus.get(a.id);
     const r=accountRow("Claude · "+a.name,state?.loggedIn?[state.email,state.plan].filter(Boolean).join(" · ") || "Bejelentkezve":state?"Nincs bejelentkezve":"Állapot lekérése…");
-    if(state?.loggedIn) r.append(settingsButton("Használat",()=>{settingsDialog.close();switchModel(a.id,cfg.claudeModel || "");}));
+    if(state?.loggedIn) r.append(settingsButton("Használat",()=>{settingsDialog.close();switchModel(a.id,cfg.claudeModel || "");}),
+      settingsButton("Code-chatek importálása",()=>{settingsDialog.close();return openClaudeImport(a.id);}));
     r.append(settingsButton("Bejelentkezés",()=>loginFromSettings(a)));
     if(a.id!=="default")r.append(settingsButton("Eltávolítás",async()=>{
       if(!confirm("Eltávolítod a(z) „"+a.name+"” helyi Claude-fiókot?"))return;

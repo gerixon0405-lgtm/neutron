@@ -1355,7 +1355,7 @@ function startTerm(extra = []) {
   termChatId = chat.id;
   const args = ["--permission-mode", chat.mode, ...(chat.model ? ["--model", chat.model] : []),
     ...(effortLevels(chat).includes(chat.effort) ? ["--effort", chat.effort] : []), ...extra];
-  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd,extraDirs:chat.extraDirs}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, extraDirs:chat.extraDirs, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
+  N.term.start({ scope: {...artifactScope(),cwd:chat.cwd,extraDirs:chat.extraDirs,claudeOrigin:chat.claudeOrigin}, provider: chat.provider, cwd: chat.cwd, args, codexChat: chat.provider === "codex" ? {...artifactScope(), cwd:chat.cwd, model: chat.model, codexThread: chat.codexThread, codexSandbox: chat.codexSandbox, extraDirs:chat.extraDirs, codexEffort: effortLevels(chat).includes(chat.codexEffort) ? chat.codexEffort : ""} : null, character: chat.character, cols: term.cols, rows: term.rows, sessionId: chat.sessionId });
   $("#termInfo").textContent = `${chat.provider === "codex" ? "Codex" : chat.provider === "fcc" ? "fcc-claude" : "claude · " + accName(chat.provider)} · ${shortDir(chat.cwd)} · ${$("#modelName").textContent}`;
   term.focus();
 }

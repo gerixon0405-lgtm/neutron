@@ -85,6 +85,15 @@ async function connect() {
       return visible && document.querySelector('#effortBar').hidden && opened;
     })()`);
     if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+    const importer=await evaluate(`(()=>{
+      showChooser();
+      document.querySelector('#importFromChooser').click();
+      const visible=document.querySelector('#claudeImportDialog').open &&
+        document.querySelector('#claudeImportAccount').value==='default';
+      document.querySelector('#closeClaudeImport').click();
+      return visible;
+    })()`);
+    if(!importer)throw Error("Claude Desktop import dialog did not open");
     const videoTab=await evaluate(`(()=>{
       models=["fixture/minimax-m3.1-flash"];
       document.querySelector('#input').value="Vágd meg ezt a videót";

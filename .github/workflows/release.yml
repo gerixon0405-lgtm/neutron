@@ -63,6 +63,8 @@ jobs:
         run: node scripts/release-notes.js
       - name: Test chat attachments and rate limit policy
         run: node scripts/test-chat-input.js
+      - name: Test local Claude Desktop session import
+        run: node scripts/test-claude-import.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata

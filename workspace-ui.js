@@ -1,4 +1,5 @@
 let projectRows = [];
+let activateProject;
 let artifactRequest = 0;
 const activeProject = () => projectRows.find(p => p.id === cfg.activeProject);
 const artifactScope = () => ({id:chat.id, projectId:chat.projectId || ""});
@@ -23,6 +24,7 @@ async function initProjects() {
     if (first) await selectChat(first.id); else newChat();
     await N.config.set(cfg);
   }
+  activateProject=activate;
   render();
   $("#projectFolder").onclick = () => N.projects.open(cfg.activeProject).catch(e => toast(e.message,true));
   select.onchange = () => {hub.close();activate(select.value).catch(e => toast(e.message,true));};

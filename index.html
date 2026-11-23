@@ -223,8 +223,22 @@
   <div class="studio-head"><div><h2 id="chooserTitle">Új csevegés</h2><p>Kivel szeretnél beszélgetni?</p></div>
     <button type="button" class="dismiss" id="closeChooser" aria-label="Bezárás">×</button></div>
   <div class="chooser-body"><div id="quickChoices" class="choice-grid"></div>
+    <button type="button" class="btn" id="importFromChooser">Claude Desktop Code-chat importálása…</button>
     <div class="gallery-title"><h3>Karaktereid</h3><button class="btn" id="addFromChooser">+ Új karakter</button></div>
     <div id="savedChoices" class="choice-grid"></div></div>
+</dialog>
+<dialog id="claudeImportDialog" class="studio" aria-labelledby="claudeImportTitle">
+  <div class="studio-head"><div><h2 id="claudeImportTitle">Claude Desktop Code importálása</h2>
+    <p>Válassz helyi munkamenetet a folytatáshoz.</p></div>
+    <button type="button" class="dismiss" id="closeClaudeImport" aria-label="Bezárás">×</button>
+  </div>
+  <div class="claude-import-body">
+    <div class="claude-import-controls"><label>Claude-fiók<select id="claudeImportAccount"></select></label>
+      <label>Keresés<input id="claudeImportSearch" type="search" placeholder="Cím vagy munkamappa"></label></div>
+    <label class="claude-include-archived"><input type="checkbox" id="claudeImportArchived"> Archivált munkamenetek</label>
+    <p id="claudeImportStatus" role="status"></p>
+    <div id="claudeImportSessions" class="claude-import-sessions"></div>
+  </div>
 </dialog>
 <dialog id="characters" class="studio" aria-labelledby="charactersTitle">
   <div class="studio-head"><div><h2 id="charactersTitle">Karakterstúdió</h2></div>
@@ -320,6 +334,7 @@
 <script src="renderer.js"></script>
 <script src="video-ui.js"></script>
 <script src="settings.js"></script>
+<script src="claude-import-ui.js"></script>
 <script src="discord-ui.js"></script>
 <script src="retry-policy.js"></script>
 <script src="appearance.js"></script>

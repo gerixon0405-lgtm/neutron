@@ -54,6 +54,8 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     disconnect: sender=>ipcRenderer.invoke("mail:disconnect",sender), select:sender=>ipcRenderer.invoke("mail:select",sender), passwordPage: ()=>ipcRenderer.invoke("mail:password-page"),
   },
   config: { get: () => ipcRenderer.invoke("config:get"), set: (c) => ipcRenderer.invoke("config:set", c) },
+  claudeImport:{list:provider=>ipcRenderer.invoke("claude-import:list",provider),
+    select:(provider,id)=>ipcRenderer.invoke("claude-import:select",provider,id)},
   chats: {
     list: () => ipcRenderer.invoke("chats:list"),
     load: (id) => ipcRenderer.invoke("chats:load", id),

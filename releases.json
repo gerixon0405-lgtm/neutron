@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.3",
+    "title": "Claude Desktop Code-beszélgetések importálása",
+    "changes": [
+      "Az Új csevegés menüből importálhatod a csatlakoztatott Claude-fiók helyi Desktop Code-munkameneteit.",
+      "A Neutron betölti az előzményeket és az eredeti munkamappát, az első folytatáskor pedig külön Claude Code-elágazást indít.",
+      "Az importálható munkamenetek cím és munkamappa szerint kereshetők. Az archivált beszélgetéseket külön kapcsolóval jelenítheted meg."
+    ]
+  },
+  {
     "version": "1.3.2",
     "title": "Vesktop-kliens választása",
     "changes": [

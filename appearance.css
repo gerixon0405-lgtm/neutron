@@ -309,3 +309,21 @@ body { background: radial-gradient(ellipse at 56% -24%, var(--tint), var(--bg) 6
 #settingsDialog .discord-client-label { margin:10px 0; max-width:300px; }
 .discord-client-label select { padding:7px 8px; border:1px solid var(--line-2); border-radius:8px;
   font:inherit; color:var(--ink); background:var(--bg); }
+
+/* Local Claude Desktop session picker */
+.claude-import-body { padding:17px 24px 23px; }
+.claude-import-controls { display:grid; grid-template-columns:minmax(140px,1fr) minmax(190px,1.65fr); gap:12px; }
+.claude-import-controls label { display:grid; gap:4px; color:var(--muted); font-size:13px; }
+.claude-import-controls :is(select,input) { width:100%; min-width:0; font:inherit; padding:7px 9px; background:var(--bg);
+  border:1px solid var(--line-2); border-radius:9px; color:var(--ink); }
+.claude-include-archived { display:flex; align-items:center; gap:7px; margin:12px 0; color:var(--muted); font-size:13px; }
+.claude-include-archived input { accent-color:var(--a1); }
+#claudeImportStatus { color:var(--muted); font-size:13px; margin-bottom:7px; }
+.claude-import-sessions { display:grid; gap:6px; max-height:48vh; overflow:auto; }
+.claude-session-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; text-align:left;
+  padding:9px 11px; border:1px solid var(--line); border-radius:10px; background:var(--bg); }
+.claude-session-row:hover:not(:disabled) { border-color:var(--a2); background:var(--tint); }
+.claude-session-row strong,.claude-session-row small { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.claude-session-row small,.claude-session-date { color:var(--muted); font-size:12px; }
+.claude-session-row:disabled { opacity:.65; cursor:default; }
+#importFromChooser { margin-top:10px; }

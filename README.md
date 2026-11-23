@@ -39,3 +39,7 @@ A helyi rendereléshez az `ffmpeg` és `ffprobe` programoknak elérhetőknek kel
 Hozz létre egy botot a [Discord Developer Portalon](https://discord.com/developers/applications). A **Beállítások → Discord** lapon a Bot token megadásával csatlakoztathatod, majd meghívhatod egy szerverre. Új szerverhez előbb készíts egy üres szervert a Discordban. Csatornaelőzményekhez a botnak olvasási jogosultság, üzenetszöveghez pedig Message Content Intent szükséges.
 
 Példák a chatben: „Hozz létre a Projekt szerveren egy Közösség kategóriát, benne általános szöveg- és Beszélgető hangcsatornával.”, „Küldj DM-et Annának a botból.”, „Olvasd el Anna válaszát a bot DM-jében.” A Neutron a küldés vagy szerverberendezés előtt megmutatja a jóváhagyandó műveletet. A bot saját nevében kommunikál. A **Megnyitás a Discordban** gomb a kiválasztott klienst használja. A Discord lap beállításai között az alapértelmezett asztali kliens vagy a Vesktop választható.
+
+### Claude Desktop Code import
+
+A csatlakoztatott Claude Code-fiókkal az **Új csevegés → Claude Desktop Code-chat importálása…** menüpontban választhatsz a szervezethez tartozó helyi Desktop Code-beszélgetések közül. A Neutron átveszi a szöveges előzményeket és az eredeti munkamappát. Az első elküldött üzenet a Claude CLI natív elágaztatását használja. A folytatás a Neutron külön munkamenetében mentődik. A felületen csak olyan helyi munkamenet jelenik meg, amelyhez megtalálható a Claude CLI átirata. A felhős és távoli munkamenetek külön a Claude Desktopban érhetők el.
