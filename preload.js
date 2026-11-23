@@ -17,7 +17,7 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     preview: (scope,name) => ipcRenderer.invoke("artifacts:preview", scope,name),
     export: (scope,name) => ipcRenderer.invoke("artifacts:export", scope,name),
   },
-  updates: { status:()=>ipcRenderer.invoke("update:status"),check:()=>ipcRenderer.invoke("update:check") },
+  updates: { notes:()=>ipcRenderer.invoke("update:notes"), status:()=>ipcRenderer.invoke("update:status"),check:()=>ipcRenderer.invoke("update:check") },
   mail: {
     status: batch=>ipcRenderer.invoke("mail:status",batch || ""), cancel: id=>ipcRenderer.invoke("mail:cancel",id),
     smtp: (email,password)=>ipcRenderer.invoke("mail:smtp",email,password), oauth: ()=>ipcRenderer.invoke("mail:oauth"),

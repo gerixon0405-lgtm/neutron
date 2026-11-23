@@ -13,3 +13,5 @@ Fejlesztői indítás: npm ci, majd npm start. A csomag verziójával egyező v-
 A chat jogosultságmenüjében a „Mappa vagy meghajtó hozzáadása…” paranccsal további könyvtárakat adhatsz a csevegéshez. Codex esetén ez szerkesztési módra vált. A menüből egyenként eltávolíthatod a hozzáadott mappákat.
 
 Windowson a chat lekérheti a telepített illesztőprogramok verzióját, a kiadót, az aláírás állapotát és a hibás eszközöket. Megnyithatja a választható Windows-frissítéseket is. Helyi illesztőprogram telepítésekor te választod ki az INF-fájlt, majd a Windows jogosultságkérő ablakában engedélyezheted a PnPUtil futását.
+
+A megjelenést, a nevet és a hangjelzéseket a **Beállítások → Megjelenés** alatt módosíthatod. A **Frissítések** fülön a korábbi kiadási megjegyzéseket is megnyithatod. Minden új verzióhoz vegyél fel egy bejegyzést a `releases.json` elejére. Ezt használja a kiadási folyamat és az alkalmazáson belüli újdonságablak is.

@@ -49,6 +49,8 @@ jobs:
         run: node scripts/test-fcc-catalog.js
       - name: Test direct Windows maintenance command
         run: node scripts/test-maintenance-command.js
+      - name: Verify bundled release notes
+        run: node scripts/release-notes.js
       - name: Package application
         run: npm run dist -- --${{ matrix.platform }} --x64
       - name: Check packaged app and update metadata
@@ -73,6 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {contents: write}
     steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
       - uses: actions/download-artifact@v4
         with: {path: release, merge-multiple: true}
       - name: Publish complete release
@@ -80,4 +84,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
-        run: gh release create "$TAG" release/* --repo "$REPO" --verify-tag --title "Neutron ${TAG#v}" --generate-notes
+        run: |
+          node scripts/release-notes.js > release-notes.md
+          gh release create "$TAG" release/* --repo "$REPO" --verify-tag --title "Neutron ${TAG#v}" --notes-file release-notes.md

@@ -1,0 +1,12 @@
+[
+  {
+    "version": "1.2.0",
+    "title": "Személyre szabható munkatér",
+    "changes": [
+      "Az első indításkor megadhatod a nevedet, választhatsz színtémát, elrendezést és hangjelzéseket.",
+      "A chat kezdőképernyője, az oldalsáv és a beállítások új megjelenést kaptak. A témát és az animációkat bármikor átállíthatod.",
+      "A Neutron jelezhet üzenetküldéskor, válasz érkezésekor és engedélykérésnél. A hangerő állítható.",
+      "Frissítés után az alkalmazás megmutatja a változásokat. A kiadási megjegyzéseket később is megnyithatod a Beállításokban."
+    ]
+  }
+]

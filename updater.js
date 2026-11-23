@@ -19,6 +19,11 @@ function register(){
     check=()=>autoUpdater.checkForUpdates().catch(()=>{});
     app.whenReady().then(()=>{setTimeout(check,10000).unref();setInterval(check,6*60*60*1000).unref();});
   }
+  ipcMain.handle("update:notes",()=>{
+    const version=app.getVersion();
+    const entries=require("./releases.json").filter(entry=>entry.version.localeCompare(version,undefined,{numeric:true})<=0);
+    return {version,entries};
+  });
   ipcMain.handle("update:status",()=>({...state,enabled:!!check}));
   ipcMain.handle("update:check",async()=>{await check?.();return state;});
 }

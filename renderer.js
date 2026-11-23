@@ -55,6 +55,7 @@ function setMd(div, text) {
 // ---------- starfield ----------
 (function stars() {
   const cv = $("#stars"), ctx = cv.getContext("2d");
+  const accent = { primary:"#a78bfa", secondary:"#67e8f9" };
   let W, H, pts = [], mouse = { x: -999, y: -999 };
   const resize = () => {
     W = cv.width = innerWidth * devicePixelRatio; H = cv.height = innerHeight * devicePixelRatio;
@@ -67,24 +68,32 @@ function setMd(div, text) {
   addEventListener("resize", resize);
   addEventListener("mousemove", (e) => { mouse = { x: e.clientX * devicePixelRatio, y: e.clientY * devicePixelRatio }; });
   resize();
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  (function frame() {
+  let frameId;
+  addEventListener("neutron-appearance", () => {
+    const style = getComputedStyle(document.documentElement);
+    accent.primary = style.getPropertyValue("--a1");
+    accent.secondary = style.getPropertyValue("--a2");
+    cancelAnimationFrame(frameId);
+    ctx.clearRect(0, 0, W, H);
+    if (!document.documentElement.matches('[data-motion="reduced"], [data-background="plain"]')) frame();
+  });
+  function frame() {
     if (!document.hidden) {
       ctx.clearRect(0, 0, W, H);
       for (const s of pts) {
         s.x = (s.x + s.vx + W) % W; s.y = (s.y + s.vy + H) % H; s.p += .02;
         const d = Math.hypot(s.x - mouse.x, s.y - mouse.y), near = d < 160 * devicePixelRatio;
         ctx.globalAlpha = .35 + Math.sin(s.p) * .3 + (near ? .4 : 0);
-        ctx.fillStyle = near ? "#67e8f9" : "#c4b5fd";
+        ctx.fillStyle = near ? accent.secondary : accent.primary;
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r * devicePixelRatio, 0, 6.28); ctx.fill();
         if (near) {
-          ctx.globalAlpha = (1 - d / (160 * devicePixelRatio)) * .35; ctx.strokeStyle = "#a78bfa";
+          ctx.globalAlpha = (1 - d / (160 * devicePixelRatio)) * .35; ctx.strokeStyle = accent.primary;
           ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
         }
       }
     }
-    requestAnimationFrame(frame);
-  })();
+    frameId = requestAnimationFrame(frame);
+  }
 })();
 
 // ---------- sidebar ----------
@@ -182,16 +191,24 @@ function renderChat() {
 
 function renderHero() {
   const th = $("#thread");
+  const name = cfg.appearance?.name;
+  const shortcuts = [
+    ["Tervezés", "Építs egy interaktív heti tervezőt HTML-ben."],
+    ["Minecraft", "Hozz létre egy Fabric-példányt a Prismben, és telepítsd bele a Sodiumot."],
+    ["Keresés", "Keress rá a Prism Launcher legújabb kiadására, és adj forrásokat."],
+    ["Zene", "Nézd meg, melyik szám szól most a Spotifyon."],
+  ];
   th.innerHTML = `<div class="hero">
-    ${chat.character ? portrait(chat.character) : '<img class="hero-mark" src="icon.png" alt="">'}
-    <h2>${chat.character ? esc(chat.character.name) : "Szia! Miben segíthetek?"}</h2><p id="typer"></p><button class="switch-character">Karakter választása →</button>
+    <div class="hero-panel">
+      <div class="hero-intro"><h2>${chat.character ? esc(chat.character.name) : name ? "Szia, " + esc(name) + "!" : "Miben segíthetek?"}</h2>
+        <p id="typer"></p><button class="switch-character">Karakter választása <span aria-hidden="true">↗</span></button></div>
+      <div class="orbit-mark hero-orbit">${chat.character ? portrait(chat.character, "large") : '<img src="icon.png" alt="">'}</div>
+    </div>
     <div class="cards">
-      ${[["Építs egy artifactot", "interaktív heti tervezővel, HTML-ben."], ["Hozz létre", "egy 1.21.1-es Fabric-példányt a Prismben, és telepítsd bele a Sodiumot."],
-        ["Keress a weben", "a Prism Launcher legújabb kiadására, és adj forrásokat."], ["Nézd meg", "melyik szám szól most a Spotifyon."]]
-        .map(([a, b], i) => `<button class="card" style="--i:${i}"><b>${a}</b>${b}</button>`).join("")}
+      ${shortcuts.map(([label,prompt], i) => `<button class="card" style="--i:${i}" data-starter="${esc(prompt)}"><b>${label}</b><span>${prompt}</span><i aria-hidden="true">↗</i></button>`).join("")}
     </div></div>`;
   th.querySelectorAll(".card").forEach((b) => (b.onclick = () => {
-    $("#input").value = `${b.querySelector("b").textContent} ${b.lastChild.textContent}`;
+    $("#input").value = b.dataset.starter;
     autoGrow(); $("#input").focus();
   }));
   $("#typer").textContent = providerLabel(chat.provider, chat.model);
@@ -411,7 +428,7 @@ function appendBlock(c, it, b) {
 }
 
 const nearBottom = () => { const s = $("#scroll"); return s.scrollHeight - s.scrollTop - s.clientHeight < 140; };
-function scrollDown(instant) { const s = $("#scroll"); s.scrollTo({ top: s.scrollHeight, behavior: instant ? "instant" : "smooth" }); }
+function scrollDown(instant) { const s = $("#scroll"); s.scrollTo({ top: s.scrollHeight, behavior: instant || document.documentElement.dataset.motion==="reduced" ? "instant" : "smooth" }); }
 
 function setBusyUi() {
   const busy = chat && live.has(chat.id);
@@ -493,6 +510,7 @@ async function submit(c, text, wake = false, shot = null) {
     if (active) $("#title").textContent = c.title;
     if (!c.projectId) { cfg.lastCwd = c.cwd; N.config.set(cfg); }
   }
+  if (!wake) window.dispatchEvent(new Event("neutron-send"));
   const u = { role: "user", text, wake };
   c.items.push(u);
   if (active) $("#thread").append(itemEl(u));
@@ -665,6 +683,7 @@ function finishTurn(c, it) {
   }
   window.dispatchEvent(new CustomEvent("neutron-turn-ended",{detail:{id:c.id,turn:it}}));
   live.delete(c.id);
+  if (it.blocks.some(b=>b.type==="text") && !it.blocks.some(b=>b.type==="error") && it.meta!=="Leállítva") window.dispatchEvent(new Event("neutron-reply"));
   for (const request of pendingPermissions) {
     if (request.chatId === c.id) pendingPermissions.delete(request);
   }
@@ -1243,8 +1262,9 @@ addEventListener("keydown", (e) => {
 addEventListener("resize", movePill);
 
 // ---------- boot ----------
-(async function boot() {
+addEventListener("DOMContentLoaded", async function boot() {
   const [config, userHome, catalog] = await Promise.all([N.config.get(), N.home(), N.codexModels()]);
+  const returning = Object.keys(config).length > 0;
   cfg = config; home = userHome; codexModels = catalog.entries.map(m => m.id);
   codexLevels = Object.fromEntries(catalog.entries.map(m => [m.id, m.levels])); defaultCodex = catalog.defaultModel;
   await initProjects();
@@ -1255,7 +1275,7 @@ addEventListener("resize", movePill);
     const c = await getChat(id);
     for (const b of c?.items.flatMap((i) => i.blocks || []) || []) if (b.type === "wake" && b.state === "pending") arm(c, b);
   }
-  window.dispatchEvent(new Event("neutron-ready"));
+  window.dispatchEvent(new CustomEvent("neutron-ready",{detail:{returning:returning || chats.length>0}}));
   refreshAccounts();
   const syncCatalog = () => { if (!document.hidden) refreshModels().catch(() => {}); };
   window.addEventListener("focus", syncCatalog);
@@ -1270,4 +1290,4 @@ addEventListener("resize", movePill);
     $("#fccText").textContent = `FCC · ${models.length} modell`;
   } catch (e) { toast("Modellek lekérése sikertelen: " + e.message, true); }
   if (!chat.character && !chat.items.length && !chat.model && chat.provider === "fcc") { chat.model = defaultModel(); updateChips(); }
-})();
+});

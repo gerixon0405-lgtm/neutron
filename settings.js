@@ -1,5 +1,6 @@
 "use strict";
 const settingsDialog=$("#settingsDialog");
+let settingsTab="appearance", mailConnected=false;
 let mailTimer, mailBusy=false, mailLoading=false, mailGeneration=0, lastMailView="";
 const stateLabels={pending:"várakozik",sending:"küldés alatt",sent:"Gmail átvette",failed:"elutasítva",unknown:"ellenőrizendő",cancelled:"leállítva"};
 
@@ -57,7 +58,8 @@ function drawMail(state){
   const connected=!!state.email;
   $("#gmailState").textContent=connected ? [state.email,state.note].filter(Boolean).join(" · ") : "Egy Gmail-fiókkal egy vagy több címzettnek is küldhetsz levelet a chatből.";
   $("#gmailLogin").hidden=connected && !state.note;
-  $("#gmailDisconnect").hidden=!connected;$("#outboxSection").hidden=!connected;
+  $("#gmailDisconnect").hidden=!connected;mailConnected=connected;
+  $("#outboxSection").hidden=!connected || settingsTab!=="connections";
   const list=$("#gmailOutbox");list.replaceChildren();
   if(!state.batches?.length){list.textContent="Még nincs sorba állított levél.";return;}
   for(const batch of state.batches){
@@ -101,6 +103,13 @@ $("#gmailForm").onsubmit=e=>{
 $("#gmailOAuth").onclick=()=>mailAction(()=>N.mail.oauth());
 $("#gmailHelp").onclick=()=>N.mail.passwordPage().catch(e=>toast(e.message,true));
 $("#gmailDisconnect").onclick=()=>mailAction(()=>N.mail.disconnect());
+document.querySelectorAll("[data-settings]").forEach(button=>button.onclick=()=>{
+  settingsTab=button.dataset.settings;
+  document.querySelectorAll("[data-settings]").forEach(tab=>tab.setAttribute("aria-pressed",tab===button));
+  document.querySelectorAll("[data-panel]").forEach(panel=>{
+    panel.hidden=panel.dataset.panel!==settingsTab || (panel.id==="outboxSection" && !mailConnected);
+  });
+});
 $("#settingsClose").onclick=()=>settingsDialog.close();
 $("#accBtn").onclick=()=>{
   settingsDialog.showModal();drawAiAccounts();refreshAccounts().then(()=>{if(settingsDialog.open)drawAiAccounts();}).catch(e=>toast(e.message,true));

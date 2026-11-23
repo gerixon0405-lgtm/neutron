@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
 <link rel="stylesheet" href="node_modules/@highlightjs/cdn-assets/styles/tokyo-night-dark.min.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="appearance.css">
 </head>
 <body>
 <canvas id="stars"></canvas>
@@ -39,7 +40,7 @@
     <div class="side-foot">
       <span class="status-dot" id="fccDot"></span>
       <span id="fccText">FCC indítása…</span>
-      <button class="link" id="accBtn" title="Kapcsolatok és küldési sor">Beállítások</button>
+      <button class="link" id="accBtn" title="Megjelenés, kapcsolatok és frissítések">Beállítások</button>
 
     </div>
   </aside>
@@ -95,9 +96,18 @@
   </main>
 </div>
 <dialog id="settingsDialog" class="studio" aria-labelledby="settingsTitle">
-  <div class="studio-head"><div><h2 id="settingsTitle">Beállítások</h2><p>Kapcsolatok és e-mail-küldés</p></div><button id="settingsClose" class="dismiss" aria-label="Bezárás">×</button></div>
+  <div class="studio-head"><div><h2 id="settingsTitle">Beállítások</h2><p>Megjelenés, kapcsolatok és frissítések</p></div><button id="settingsClose" class="dismiss" aria-label="Bezárás">×</button></div>
+  <nav class="settings-tabs" aria-label="Beállítások">
+    <button type="button" data-settings="appearance" aria-pressed="true">Megjelenés</button>
+    <button type="button" data-settings="connections" aria-pressed="false">Kapcsolatok</button>
+    <button type="button" data-settings="updates" aria-pressed="false">Frissítések</button>
+  </nav>
   <div class="settings-body">
-    <section><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
+    <section id="appearanceSection" data-panel="appearance">
+      <h3>Személyre szabás</h3>
+      <form id="appearanceForm" class="appearance-form"></form>
+    </section>
+    <section data-panel="connections" hidden><h3>Gmail</h3><p id="gmailState" role="status">Fiókállapot lekérése…</p>
       <div id="gmailLogin">
         <form id="gmailForm"><label>Gmail- vagy Workspace-cím<input type="email" id="gmailEmail" autocomplete="username" required></label>
         <label>Google-alkalmazásjelszó<input type="password" id="gmailPassword" autocomplete="off" required></label>
@@ -106,9 +116,9 @@
       </div>
       <button class="btn" id="gmailDisconnect" hidden>Gmail leválasztása</button><p id="gmailFeedback" role="status"></p>
     </section>
-    <section id="outboxSection" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
-    <section><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div></section>
-    <section><h3>AI-fiókok</h3><div id="aiAccounts"></div>
+    <section id="outboxSection" data-panel="connections" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
+    <section data-panel="updates" hidden><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div><button class="btn" id="showReleaseNotes">Kiadási megjegyzések</button></section>
+    <section data-panel="connections" hidden><h3>AI-fiókok</h3><div id="aiAccounts"></div>
       <form id="addClaudeForm"><label>Új Claude-fiók neve<input id="newAccountName" maxlength="60" placeholder="Például Munka" required></label><button class="btn">Claude-fiók hozzáadása</button></form>
       <div class="settings-account"><div><strong>Free Claude Code</strong><small id="settingsFcc"></small></div><button class="btn" id="adminBtn">Admin megnyitása</button></div>
     </section>
@@ -170,6 +180,29 @@
     <div class="dialog-actions"><button type="button" id="voiceQuiet" class="btn">Felolvasás leállítása</button><button class="btn go">Mentés</button></div>
   </form>
 </dialog>
+<dialog id="onboardingDialog" class="studio welcome-dialog" aria-labelledby="welcomeTitle">
+  <div class="welcome-head">
+    <div class="orbit-mark"><img src="icon.png" alt=""></div>
+    <div><h2 id="welcomeTitle">Üdv a Neutronban!</h2><p id="welcomeIntro">Adj nevet a profilodnak.</p></div>
+  </div>
+  <form id="welcomeForm" class="appearance-form">
+    <div id="welcomeFields"></div>
+    <div class="welcome-footer">
+      <span id="welcomeProgress" aria-live="polite"></span>
+      <button id="welcomeBack" class="btn" type="button" hidden>Vissza</button>
+      <button id="welcomeNext" class="btn go" type="submit">Tovább</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="releaseDialog" class="studio welcome-dialog" aria-labelledby="releaseTitle">
+  <div class="welcome-head">
+    <div class="orbit-mark"><img src="icon.png" alt=""></div>
+    <div><h2 id="releaseTitle">Mi újság a Neutronban?</h2><p id="releaseVersion"></p></div>
+  </div>
+  <div id="releaseEntries" class="release-entries"></div>
+  <div class="release-footer"><button class="btn go" id="closeRelease">Rendben</button></div>
+</dialog>
 <div class="toasts" id="toasts"></div>
 
 <script src="node_modules/marked/lib/marked.umd.js"></script>
@@ -181,6 +214,7 @@
 <script src="hungarian.js"></script>
 <script src="renderer.js"></script>
 <script src="settings.js"></script>
+<script src="appearance.js"></script>
 <script src="voice-ui.js"></script>
 </body>
 </html>
