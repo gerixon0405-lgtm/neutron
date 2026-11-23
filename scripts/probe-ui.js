@@ -85,6 +85,17 @@ async function connect() {
       return visible && document.querySelector('#effortBar').hidden && opened;
     })()`);
     if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+    const videoTab=await evaluate(`(()=>{
+      models=["fixture/minimax-m3.1-flash"];
+      document.querySelector('#input').value="Vágd meg ezt a videót";
+      send();
+      const picked=JSON.parse(document.querySelector('#videoModel').value);
+      const ok=view==="video" && !document.querySelector('#videoView').inert &&
+        picked.id==="fixture/minimax-m3.1-flash" && document.querySelector('#videoBrief').value==="Vágd meg ezt a videót";
+      setView("chat");
+      return ok;
+    })()`);
+    if(!videoTab)throw Error("Video handoff or recommended model was missing");
     await evaluate(`(()=>{
       document.querySelector('#charactersBtn').click();
       document.querySelector('#addProfile').click();

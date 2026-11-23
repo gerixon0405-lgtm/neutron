@@ -150,7 +150,7 @@ async function selectChat(id) {
   if (!c) return toast("Nem sikerült betölteni a csevegést.", true);
   if ((cfg.activeProject || "") !== (c.projectId || "")) return;
   chat = c;
-  if (view === "term") setView("chat");
+  if (view !== "chat") setView("chat");
   renderChat();
   renderList();
 }
@@ -560,6 +560,11 @@ function send() {
   if (!chat || (!text && !pendingFiles.get(chat.id)?.length)) return;
   if (live.has(chat.id)) return toast("Várd meg a választ, vagy állítsd le (Esc).");
   closePop();
+  const files=pendingFiles.get(chat.id)||[];
+  if(wantsVideoEditor(text)){
+    box.value="";autoGrow();
+    openVideoFromChat(chat.id,text,files);return;
+  }
   const cmd = text.startsWith("/") ? text.slice(1).split(/\s/)[0] : null;
   const meta = slashMeta.term.length ? slashMeta : cfg.slashCache || slashMeta;
   if (chat.provider !== "codex" && !pendingFiles.get(chat.id)?.length && cmd && meta.term?.includes(cmd) && !meta.slash?.includes(cmd)) {
@@ -1034,6 +1039,7 @@ async function loadModels() {
   lastCatalog = snapshot;
   models = catalog.map(m => m.id);
   fccLevels = Object.fromEntries(catalog.map(m => [m.id, m.levels]));
+  if(view==="video")fillVideoModels();
   if (chat) renderEffort();
   if (characterDialog.open && profileProvider.value === "fcc") fillCharacterModels(profileModel.value);
   if ($("#voiceDialog").open && $("#assistantProvider").value === "fcc") fillVoiceModels($("#assistantModel").value);
@@ -1068,7 +1074,7 @@ function choice(profile, sub, action, current = false) {
 
 function startProfile(profile, provider) {
   if (profile?.provider === "web") return showStudio(profile.id);
-  if (view === "term") setView("chat");
+  if (view !== "chat") setView("chat");
   newChat(profile, provider);
 }
 
@@ -1356,6 +1362,8 @@ function setView(v, start) {
   movePill();
   $("#chatView").classList.toggle("hidden", v !== "chat");
   $("#termView").classList.toggle("hidden", v !== "term");
+  $("#videoView").classList.toggle("hidden", v !== "video");
+  for(const [mode,id] of [["chat","chatView"],["term","termView"],["video","videoView"]])$("#"+id).inert=mode!==v;
   if (v === "term") {
     ensureTerm();
     fit.fit();
@@ -1365,7 +1373,8 @@ function setView(v, start) {
   } else {
     N.term.stop(); // the chat process resumes the same session on the next message
     termChatId = null;
-    $("#input").focus();
+    if(v==="video") {closeFiles();enterVideoEditor();}
+    else { $("#videoPlayer").pause();$("#input").focus(); }
   }
 }
 function movePill() {

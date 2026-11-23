@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.0",
+    "title": "Editor V1 videóstúdió",
+    "changes": [
+      "A Videó fülön kiválaszthatod vagy behúzhatod a felvételt, megadhatod az instrukciót és kiválaszthatod a vágómodellt.",
+      "A Neutron előre sorolja a MiniMax M3.1 Flash modellt, ha az elérhető a Free Claude Code katalógusában.",
+      "Átnézheted a vágási tervet és a forrásokat, majd 16:9, 9:16 vagy 1:1 képarányú MP4-et renderelhetsz.",
+      "A videóvágást kérő chatüzenet vagy a /videó parancs megnyitja az Editort."
+    ]
+  },
+  {
     "version": "1.2.3",
     "title": "Helyi mellékletek és új hátterek",
     "changes": [

@@ -2,7 +2,7 @@
 <html lang="hu">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; media-src 'self' blob:; frame-src neutron-artifact:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: neutron-video:; connect-src 'self'; media-src 'self' blob: neutron-video:; frame-src neutron-artifact:">
 <title>Neutron</title>
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
@@ -56,6 +56,7 @@
         <span class="pill"></span>
         <button data-view="chat" class="on">Chat</button>
         <button data-view="term">Terminál</button>
+        <button data-view="video">Videó</button>
       </div>
     </header>
 
@@ -104,7 +105,51 @@
           <div class="hint"><kbd>Enter</kbd> küldés · <kbd>Shift+Enter</kbd> új sor · <span id="slashHint"><kbd>/</kbd> parancsok · </span> <kbd>Esc</kbd> leállítás</div>
         </div>
       </section>
-      <section id="termView" class="hidden">
+      <section id="videoView" class="hidden" inert aria-labelledby="videoTitle">
+        <div class="video-shell">
+          <header class="video-head"><div><h2 id="videoTitle">Videóstúdió</h2><p>Editor V1 · Dokumentumfilm-vágás</p></div></header>
+          <div class="video-grid">
+            <form id="videoForm" class="video-controls">
+              <div class="video-drop" id="videoDrop">
+                <button type="button" class="btn" id="videoPick">Videó kiválasztása</button>
+                <small id="videoSource">Vagy húzd ide a felvételt.</small>
+              </div>
+              <label>Vágómodell<select id="videoModel" required></select></label>
+              <small class="video-selection">A kiválasztott modell a vágási instrukciót, az átiratot és képkezelés esetén a mintaképkockákat kapja meg.</small>
+              <label>Vágási instrukció<textarea id="videoBrief" rows="3" maxlength="6000" placeholder="Mi legyen a hangsúly? Kinek szól, és milyen hangulatot szeretnél?"></textarea></label>
+              <div class="video-pair"><label>Tempó<select id="videoPace"><option value="fast">Pörgős dokumentumfilm</option><option value="calm">Nyugodtabb magyarázat</option></select></label>
+              <label>Beszéd nyelve<select id="videoLanguage"><option value="hu">Magyar</option><option value="en">Angol</option><option value="auto">Automatikus</option><option value="none">Átirat nélkül</option></select></label></div>
+              <details><summary>Kivágat, felirat és kiegészítők</summary>
+                <div class="video-pair"><label>Kezdet (mp)<input id="videoStart" type="number" min="0" step=".1" value="0"></label>
+                  <label>Vége (mp)<input id="videoEnd" type="number" min="0" step=".1" placeholder="A felvétel vége"></label></div>
+                <label>Saját időzített felirat (SRT)<textarea id="videoTranscript" rows="2" maxlength="150000"></textarea></label>
+                <div class="video-actions"><button type="button" class="btn" id="videoBroll">B-roll hozzáadása</button><button type="button" class="btn" id="videoMusic">Zene hozzáadása</button></div>
+                <p class="video-selection" id="videoExtras"></p>
+              </details>
+              <label class="video-check"><input type="checkbox" id="videoSourceWeb" checked> Közkincs képek keresése a Wikimedia Commonson</label>
+              <button class="btn go" id="videoPlan" type="submit">Vágási terv készítése</button>
+            </form>
+            <div class="video-workbench">
+              <div class="video-status" aria-live="polite"><p id="videoStatus">Válassz egy forrásvideót és indítsd el a tervezést.</p><progress id="videoProgress" max="100" hidden></progress>
+                <button type="button" class="btn" id="cancelVideo" hidden>Leállítás</button></div>
+              <div id="videoReview" hidden>
+                <div class="video-review-title"><h3 id="videoPlanTitle"></h3><p id="videoSummary"></p></div>
+                <img id="videoContact" alt="Mintaképkockák a forrásvideóból" hidden>
+                <div class="video-shots" id="videoShots" aria-label="Tervezett jelenetek"></div>
+                <div class="video-pair"><label>Képarány<select id="videoFormat"><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
+                  <label>Felbontás<select id="videoQuality"><option value="1080">1080p</option><option value="720">720p</option></select></label></div>
+                <label class="video-check"><input type="checkbox" id="videoCaptions" checked> Beszédhez időzített feliratok</label>
+                <label class="video-check"><input type="checkbox" id="videoClicks" checked> Kattintások a vágásoknál</label>
+                <button type="button" class="btn go" id="videoRender">Terv jóváhagyása és renderelés</button>
+              </div>
+              <div id="videoExport" hidden><h3>Előnézet</h3><video id="videoPlayer" controls preload="metadata" playsinline></video>
+                <div class="video-actions"><button type="button" class="btn go" id="videoSave">MP4 mentése</button>
+                  <button type="button" class="btn" id="videoSources">Forráslista mentése</button></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="termView" class="hidden" inert>
         <div class="term-bar"><span class="lights"><i></i><i></i><i></i></span><span id="termInfo">fcc-claude</span><span class="spacer"></span>
           <button class="btn" id="termRestart">Újraindítás</button></div>
         <div class="term-box" id="termBox"></div>
@@ -254,7 +299,9 @@
 <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
 <script src="workspace-ui.js"></script>
 <script src="hungarian.js"></script>
+<script src="video-intent.js"></script>
 <script src="renderer.js"></script>
+<script src="video-ui.js"></script>
 <script src="settings.js"></script>
 <script src="retry-policy.js"></script>
 <script src="appearance.js"></script>

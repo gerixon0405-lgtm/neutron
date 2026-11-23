@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, desktopCapturer, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, desktopCapturer, nativeImage, protocol } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -13,6 +13,11 @@ const voice = require("./voice");
 const mail = require("./mail_main");
 const uploads = require("./attachment-files");
 const retryShots = new Map();
+protocol.registerSchemesAsPrivileged([
+  {scheme:"neutron-artifact",privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}},
+  {scheme:"neutron-video",privileges:{standard:true,secure:true,stream:true}},
+]);
+
 if (process.platform === "linux") app.setDesktopName("neutron.desktop");
 const HOME = os.homedir();
 const CONFIG_PATH = path.join(HOME, ".neutron-chatbot-config.json");
@@ -304,6 +309,7 @@ spaces.register(ipcMain, () => win);
 mail.register(() => win);
 require("./spotify-auth").register();
 require("./speech-cloud").register();
+require("./video-editor").register(()=>win,launchSpec,fccEffortArgs);
 require("./updater").register();
 ipcMain.handle("config:get", () => loadConfig());
 ipcMain.handle("config:set", (_, c) => { saveConfig(c); return true; });

@@ -33,18 +33,28 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libarchive-tools libfuse2t64
+          sudo apt-get install -y libarchive-tools libfuse2t64 ffmpeg
           python -m pip install requests
+      - name: Install Windows FFmpeg for rendering tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue) -or !(Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ffmpeg -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test Windows app helpers
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api
+          ./build/python/python.exe -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./build/python/python.exe scripts/smoke_windows.py
       - name: Test Linux app helpers
         if: runner.os == 'Linux'
-        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api
+        run: python -m unittest -v test_mail test_chat_outputs test_desktop_integrations test_search_maintenance test_spotify_api test_video_render
       - name: Test FCC model catalog
         run: node scripts/test-fcc-catalog.js
       - name: Test direct Windows maintenance command

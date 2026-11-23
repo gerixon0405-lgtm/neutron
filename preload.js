@@ -14,6 +14,16 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     remove:(id,row)=>ipcRenderer.invoke("uploads:remove",id,row),
     reveal:(id,row)=>ipcRenderer.invoke("uploads:reveal",id,row),
   },
+  video:{
+    pick:kind=>ipcRenderer.invoke("video:pick",kind),
+    drop:files=>ipcRenderer.invoke("video:drop","video",files.map(file=>webUtils.getPathForFile(file))),
+    fromChat:(id,file)=>ipcRenderer.invoke("video:from-chat",id,file),
+    plan:options=>ipcRenderer.invoke("video:plan",options),
+    render:options=>ipcRenderer.invoke("video:render",options),
+    save:(id,kind)=>ipcRenderer.invoke("video:save",id,kind),
+    cancel:()=>ipcRenderer.invoke("video:cancel"),
+    onProgress:on("video:progress"),
+  },
   projects: { open: id => ipcRenderer.invoke("projects:open",id), list: () => ipcRenderer.invoke("projects:list"), create: name => ipcRenderer.invoke("projects:create", name) },
   artifacts: {
     list: scope => ipcRenderer.invoke("artifacts:list", scope),

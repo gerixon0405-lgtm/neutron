@@ -7,7 +7,6 @@ const {randomUUID} = require("node:crypto");
 const {promisify} = require("node:util");
 const run = promisify(require("node:child_process").execFile);
 const scheme = "neutron-artifact";
-protocol.registerSchemesAsPrivileged([{scheme,privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const types = {html:"text/html",htm:"text/html",svg:"image/svg+xml",js:"text/javascript",mjs:"text/javascript",css:"text/css",json:"application/json",png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",webp:"image/webp",gif:"image/gif",ico:"image/x-icon",woff:"font/woff",woff2:"font/woff2",wasm:"application/wasm"};
 let current, version=0;
 async function clear() {

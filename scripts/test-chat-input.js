@@ -11,6 +11,9 @@ const {isRateLimit,rateRetryDecision,RATE_RETRY_DELAY}=require("../retry-policy"
   for(let n=1;n<10;n++)assert.equal(rateRetryDecision(n,false),"wait");
   assert.equal(rateRetryDecision(10,false),"limit");
   assert.equal(rateRetryDecision(1,true),"effects");
+  const {wantsVideoEditor}=require("../video-intent");
+  for(const text of ["Kérlek, vágd meg ezt a videót","Editor V1 legyen gyors","/videó","Vágj meg egy felvételt"])assert.ok(wantsVideoEditor(text));
+  for(const text of ["Mi az Editor V1?","Ne vágd meg a videót","Keress egy videót"])assert.ok(!wantsVideoEditor(text));
   const {pcm16Wave}=require("../speech-wave");
   const wav=Buffer.from(pcm16Wave([-1,0,1]));
   assert.equal(wav.toString("ascii",0,4),"RIFF");

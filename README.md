@@ -27,3 +27,9 @@ Helyi beszédfelismeréshez a Neutron előnyben részesíti a többnyelvű Whisp
 A Hangasszisztens párbeszédablakban opcionálisan Azure Speech-erőforrást állíthatsz be Noémi vagy Tamás hangjával. Ilyenkor a felvétel és a felolvasandó szöveg a Microsoft Speech szolgáltatáshoz kerül. A kulcsot a Neutron a rendszer titkosításával tárolja. Az Azure-kapcsolat leválasztásakor a helyi feldolgozás áll vissza.
 
 A chathez csatolt új fájlok az eredeti helyi fájlra mutatnak. A szolgáltató az üzenettel a fájl nevét és útvonalát kaphatja meg, a kiválasztott modell pedig a saját fájlhozzáférési szabályai alapján olvashatja a tartalmát. Átnevezés vagy áthelyezés után csatold újra. A **Beállítások → Megjelenés** alatt választhatsz a beépített hátterek közül vagy megadhatsz saját képet.
+
+### Editor V1
+
+A **Videó** fülön válassz egy forrásvideót és vágómodellt. A **Terv jóváhagyása és renderelés** gomb előtt átnézheted és kikapcsolhatod a tervezett betéteket. A modell vágási tervet ad, a Neutron helyben renderel. A Videó fülön megadhatsz saját képeket, mozgó B-rollt és zenét. A Wikimedia-keresés csak közkincsként vagy CC0-ként jelölt képeket javasol, a forráslista külön menthető. A nevek és a licencek ellenőrizhetők renderelés előtt.
+
+A helyi rendereléshez az `ffmpeg` és `ffprobe` programoknak elérhetőknek kell lenniük a PATH-on. H.264 videókódolásra képes build szükséges, időzített feliratokhoz pedig libass támogatás. Helyi, szóidőzítéses átirathoz Whisper CLI és többnyelvű modell kell. Saját SRT-t is bemásolhatsz. A kiválasztott modell a vágási instrukciót, az átiratot és képkezelés esetén a mintaképkockákat kapja meg.
