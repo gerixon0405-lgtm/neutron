@@ -92,17 +92,18 @@ def artifact_read(name):
     return p.read_text()
 
 
-@tool("Prepare an explicitly requested reminder or scheduled chat task for review in Neutron. The user has to save the draft. Use the user's local date and time (ISO YYYY-MM-DDTHH:MM), or include its timezone offset if specified.", kind=("reminder","task"), title=str, text=str, when=str, repeat=("once","daily","weekly"))
-def schedule_draft(kind, title, text, when, repeat="once"):
+@tool("Prepare an explicitly requested reminder or scheduled chat task for review in Neutron. The user has to save the draft. For timed jobs use the user's local ISO date and time. Use startup for the first Neutron launch after each system boot.", kind=("reminder","task"), title=str, text=str, when=str, repeat=("once","daily","weekly","startup"))
+def schedule_draft(kind, title, text, when="", repeat="once"):
     from datetime import datetime
-    if kind not in ("reminder","task") or repeat not in ("once","daily","weekly"):
+    if kind not in ("reminder","task") or repeat not in ("once","daily","weekly","startup"):
         raise ValueError("Érvénytelen ütemezéstípus vagy ismétlés.")
     title, text = title.strip(), text.strip()
     if not title or len(title)>100 or len(text)>12000 or (kind=="task" and not text):
         raise ValueError("Adj meg egy címet és a feladat szövegét.")
-    if "T" not in when:
-        raise ValueError("Adj meg dátumot és időpontot is.")
-    datetime.fromisoformat(when.replace("Z","+00:00"))
+    if repeat != "startup":
+        if "T" not in when:
+            raise ValueError("Adj meg dátumot és időpontot is.")
+        datetime.fromisoformat(when.replace("Z","+00:00"))
     return {"state":"schedule_draft","kind":kind,"title":title,"text":text,"when":when,"repeat":repeat}
 
 

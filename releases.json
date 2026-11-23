@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.7",
+    "title": "Liquid Glass és automatikus indítás",
+    "changes": [
+      "Nagyobb lett a Neutron és az egyéni karakterek profilképe a csevegésben.",
+      "A Megjelenés lapon és az első indításkor választható a Liquid Glass téma.",
+      "A Beállítások Indítás lapján bekapcsolható, hogy a Neutron az asztali bejelentkezéskor automatikusan megnyíljon.",
+      "Az Ütemezés Rendszerindítás után opciója a rendszerindítást követő első Neutron-indításkor futtatja a feladatot vagy emlékeztetőt."
+    ]
+  },
+  {
     "version": "1.3.6",
     "title": "Rögzített chatek, ütemezés és Nemotron Hybrid",
     "changes": [

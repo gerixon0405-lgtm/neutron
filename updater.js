@@ -1,5 +1,5 @@
 const {app,ipcMain}=require("electron");
-function register(){
+function register(updateStartupPath){
   let state={message:"A forrásból indított példány fejlesztői változat.",version:app.getVersion()},check;
   if(app.isPackaged && require("./package.json").neutronStoreBuild){
     state.message="A frissítéseket a Microsoft Store kezeli.";
@@ -16,6 +16,10 @@ function register(){
     autoUpdater.on("download-progress",p=>set("Frissítés letöltése · "+Math.round(p.percent)+"%"));
     autoUpdater.on("update-downloaded",info=>set("A "+info.version+" verzió letöltve. Kilépéskor települ."));
     autoUpdater.on("error",()=>set("A frissítés ellenőrzése sikertelen. Később újrapróbáljuk."));
+    autoUpdater.on("appimage-filename-updated",filename=>{
+      try{updateStartupPath(filename);}
+      catch(error){console.error("Az automatikus indító útvonala nem frissült:",error.message);}
+    });
     check=()=>autoUpdater.checkForUpdates().catch(()=>{});
     app.whenReady().then(()=>{setTimeout(check,10000).unref();setInterval(check,6*60*60*1000).unref();});
   }

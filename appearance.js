@@ -7,7 +7,8 @@ const themes = {
   graphite: {label:"Grafit", colors:["#c7ccd9","#f3f3f8"]},
   glacier: {label:"Gleccser", colors:["#a8deff","#bac6ff"]},
   cherry: {label:"Meggy", colors:["#f397ae","#ffc5a6"]},
-  orchid: {label:"Orchidea", colors:["#dd9cfa","#f6a7cd"]}
+  orchid: {label:"Orchidea", colors:["#dd9cfa","#f6a7cd"]},
+  glass: {label:"Liquid Glass", colors:["#e4f5ff","#92a5e6"]}
 };
 const backgrounds = {
   ambient:"Fényjáték",
@@ -75,7 +76,7 @@ function fields(groups, values) {
   const parts = {
     name: `<label>Hogyan szólíthatunk?<input name="name" maxlength="40" autocomplete="off" placeholder="Keresztnév vagy becenév" value="${esc(values.name)}"></label>`,
     theme: `<fieldset class="themes"><legend>Színtéma</legend><div>${Object.entries(themes).map(([id,{label,colors}]) =>
-      `<label class="swatch" style="--swatch-a:${colors[0]};--swatch-b:${colors[1]}"><input type="radio" name="theme" value="${id}"${values.theme===id?" checked":""}><span></span>${label}</label>`).join("")}</div></fieldset>`,
+      `<label class="swatch" data-swatch="${id}" style="--swatch-a:${colors[0]};--swatch-b:${colors[1]}"><input type="radio" name="theme" value="${id}"${values.theme===id?" checked":""}><span></span>${label}</label>`).join("")}</div></fieldset>`,
     background: wallpaperFields(values),
     layout: `<div class="appearance-grid">
       ${input("density","Térköz",[["roomy","Szellős"],["compact","Kompakt"]])}

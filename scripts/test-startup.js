@@ -1,0 +1,53 @@
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const os=require("node:os");
+const path=require("node:path");
+const {linuxLogin,desktopEntry}=require("../startup");
+const {ScheduleStore}=require("../neutron-schedules");
+
+const temp=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-startup-"));
+try{
+  const file=path.join(temp,"schedules.json");
+  let store=new ScheduleStore(file,"first");
+  const reminder=store.save({kind:"reminder",title:"Üdv",repeat:"startup"});
+  const task=store.save({kind:"task",title:"Napi összefoglaló",text:"Írj egy összefoglalót",chatId:"chat-example",repeat:"startup"});
+  assert.equal(store.claim(Date.now(),true),null);
+  assert.equal(reminder.nextAt,null);
+  store=new ScheduleStore(file,"second");
+  assert.equal(store.claim().id,reminder.id);
+  const running=store.claim(Date.now(),true);
+  assert.equal(running.id,task.id);
+  store=new ScheduleStore(file,"second");
+  assert.equal(store.list().find(row=>row.id===task.id).lastStatus,"interrupted");
+  assert.equal(store.claim(Date.now(),true),null);
+  store=new ScheduleStore(file,"third");
+  store.toggle(task.id);
+  assert.equal(store.claim().id,reminder.id);
+  assert.equal(store.claim(Date.now(),true),null);
+  store.toggle(task.id);
+  assert.equal(store.claim(Date.now(),true),null);
+  store=new ScheduleStore(file,"fourth");
+  assert.equal(store.claim().id,reminder.id);
+  const next=store.claim(Date.now(),true);
+  assert.equal(next.id,task.id);
+  store.finish(task.id,next.runId,"done");
+  assert.equal(new ScheduleStore(file,"fourth").claim(Date.now(),true),null);
+
+  const appImage=path.join(temp,"Neutron AppImage");
+  const newer=path.join(temp,"Neutron 1.3.7.AppImage");
+  const startup=linuxLogin(temp);
+  assert.equal(startup.status().enabled,false);
+  assert.equal(startup.set(true,appImage).enabled,true);
+  const [entry]=fs.readdirSync(path.join(temp,"autostart"));
+  const filename=path.join(temp,"autostart",entry);
+  assert.equal(fs.readFileSync(filename,"utf8"),desktopEntry(appImage));
+  startup.set(true,newer);
+  assert.equal(fs.readFileSync(filename,"utf8"),desktopEntry(newer));
+  assert.match(desktopEntry(appImage,true),/^Exec=\/usr\/bin\/env -- APPIMAGE_EXTRACT_AND_RUN=1 /m);
+  assert.equal(startup.set(false).enabled,false);
+  assert.equal(fs.existsSync(filename),false);
+  fs.writeFileSync(filename,"[Desktop Entry]\nName=Manual\n");
+  assert.equal(startup.status().available,false);
+  assert.throws(()=>startup.set(false),/kézzel/);
+  assert.equal(fs.readFileSync(filename,"utf8"),"[Desktop Entry]\nName=Manual\n");
+}finally{fs.rmSync(temp,{recursive:true,force:true});}

@@ -201,6 +201,7 @@ document.querySelectorAll("[data-settings]").forEach(button=>button.onclick=()=>
   });
   if (settingsTab==="ai") {drawAiAccounts();refreshAi();}
   if (settingsTab==="gmail") refreshMail(true);
+  if (settingsTab==="startup") refreshStartup();
   if (settingsTab==="updates") refreshUpdate();
 });
 $("#settingsClose").onclick=()=>settingsDialog.close();
@@ -221,6 +222,26 @@ async function refreshUpdate(){
   $("#appVersion").textContent="Neutron "+info.version;
   $("#updateMessage").textContent=info.message;$("#updateCheck").hidden=!info.enabled;
 }
+const startupToggle=$("#startupToggle");
+function paintStartup(state) {
+  startupToggle.checked=state.enabled;
+  startupToggle.disabled=!state.available;
+  $("#startupStatus").textContent=state.message || (state.enabled?"Az automatikus indítás be van kapcsolva.":"Az automatikus indítás ki van kapcsolva.");
+}
+async function refreshStartup(){
+  startupToggle.disabled=true;
+  try{paintStartup(await N.startup.status());}
+  catch(error){$("#startupStatus").textContent=error.message;}
+}
+startupToggle.onchange=async()=>{
+  const enabled=startupToggle.checked;
+  startupToggle.disabled=true;
+  try{paintStartup(await N.startup.set(enabled));}
+  catch(error){
+    await refreshStartup();
+    $("#startupStatus").textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,"");
+  }
+};
 $("#updateCheck").onclick=async()=>{await N.updates.check();await refreshUpdate();};
 
 

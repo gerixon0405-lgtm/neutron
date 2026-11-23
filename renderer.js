@@ -23,6 +23,7 @@ const blockEls = new WeakMap();
 const chatScroll = new WeakMap();
 let slashMeta = { slash: [], term: [] };
 let term = null, fit = null, termChatId = null;
+let fccWarmingUp=true;
 
 // ---------- utils ----------
 function toast(text, bad = false) {
@@ -262,7 +263,7 @@ function itemEl(it) {
     return wrap;
   }
   wrap.className = "msg assistant";
-  wrap.innerHTML = `${chat?.character ? portrait(chat.character, "avatar") : '<div class="avatar"><img width="26" src="icon.png" alt=""></div>'}<div class="body"></div>`;
+  wrap.innerHTML = `${chat?.character ? portrait(chat.character, "avatar") : '<div class="avatar"><img src="icon.png" alt=""></div>'}<div class="body"></div>`;
   blockEls.set(it, wrap);
   const body = wrap.querySelector(".body");
   if (it.auto) body.insertAdjacentHTML("afterbegin", `<div class="meta auto">↻ Magától folytatta</div>`);
@@ -1420,12 +1421,18 @@ function slashMenu() {
 }
 
 // ---------- terminal (real fcc-claude TUI) ----------
+function terminalTheme() {
+  const glass=document.documentElement.dataset.theme==="glass";
+  return {background:glass?"#101d32":"#05050c",foreground:glass?"#e1edff":"#ecebff",
+    cursor:glass?"#c8e9ff":"#22d3ee",selectionBackground:glass?"#a4caff50":"#8b5cf655",
+    black:"#1e1e2e",magenta:"#c084fc",cyan:"#22d3ee",blue:"#818cf8",green:"#34d399",red:"#fb7185",yellow:"#fbbf24"};
+}
+addEventListener("neutron-appearance",()=>{if(term)term.options.theme=terminalTheme();});
 function ensureTerm() {
   if (term) return;
   term = new Terminal({
     fontFamily: "JetBrains Mono, Fira Code, ui-monospace, monospace", fontSize: 13.5, cursorBlink: true, allowProposedApi: true,
-    theme: { background: "#05050c", foreground: "#ecebff", cursor: "#22d3ee", selectionBackground: "#8b5cf655",
-      black: "#1e1e2e", magenta: "#c084fc", cyan: "#22d3ee", blue: "#818cf8", green: "#34d399", red: "#fb7185", yellow: "#fbbf24" },
+    theme:terminalTheme(),
   });
   fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -1554,7 +1561,8 @@ addEventListener("DOMContentLoaded", async function boot() {
   const syncCatalog = () => { if (!document.hidden) refreshModels().catch(() => {}); };
   window.addEventListener("focus", syncCatalog);
   setInterval(syncCatalog, 30000);
-  const ok = await N.fcc.ensure();
+  const ok = await N.fcc.ensure().catch(()=>false);
+  fccWarmingUp=false;
   $("#fccDot").className = "status-dot " + (ok ? "ok" : "bad");
   $("#fccText").textContent = ok ? "FCC kapcsolódva" : "FCC nem fut";
   if (!ok) return toast("Nem sikerült elindítani az fcc-server-t. Indítsd el kézzel: fcc-server", true);

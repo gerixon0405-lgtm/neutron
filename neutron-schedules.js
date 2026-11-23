@@ -18,8 +18,9 @@ function nextOccurrence(at, repeat, now, clock) {
 }
 
 class ScheduleStore {
-  constructor(filename) {
+  constructor(filename, bootId="") {
     this.filename=filename;
+    this.bootId=bootId;
     this.rows=[];
     this.deferred=new Map();
     try {
@@ -43,23 +44,29 @@ class ScheduleStore {
   }
   replace(row) { this.commit(this.rows.map(old=>old.id===row.id?row:old)); }
   closed(row,status,now) {
+    if(row.repeat==="startup")return {...row,startupSeen:row.runBootId || this.bootId,runId:null,runBootId:null,lastAt:now,lastStatus:status};
     const nextAt=nextOccurrence(row.nextAt,row.repeat,now,row.clock);
     return {...row,nextAt,enabled:nextAt!==null && row.enabled,runId:null,lastAt:now,lastStatus:status};
   }
   save(input,now=Date.now()) {
     const title=String(input.title || "").trim(), text=String(input.text || "").trim();
-    if(!["reminder","task"].includes(input.kind) || !["once","daily","weekly"].includes(input.repeat) ||
+    const startup=input.repeat==="startup";
+    if(!["reminder","task"].includes(input.kind) || !["once","daily","weekly","startup"].includes(input.repeat) ||
       !title || title.length>100 || text.length>12000 || (input.kind==="task" && !text) ||
-      !Number.isFinite(input.nextAt) || input.nextAt<=now || input.nextAt>8640000000000000 ||
       (input.kind==="task" && !/^chat-[a-z0-9-]{1,100}$/i.test(input.chatId || "")))
-      throw Error("Adj meg egy nevet, jövőbeli időpontot és a feladathoz tartozó csevegést.");
+      throw Error("Adj meg egy nevet és a feladathoz tartozó csevegést.");
+    if(startup && !this.bootId)throw Error("A rendszerindítás időpontja most nem érhető el.");
+    if(!startup && (!Number.isFinite(input.nextAt) || input.nextAt<=now || input.nextAt>8640000000000000))
+      throw Error("Adj meg jövőbeli időpontot.");
     const old=this.rows.find(row=>row.id===input.id);
     if(input.id && !old)throw Error("Az ütemezés már nem található.");
     if(old?.runId)throw Error("A futó feladat az eredmény megérkezése után szerkeszthető.");
     if(!old && this.rows.length>=200)throw Error("Legfeljebb 200 ütemezés menthető.");
     const time=new Date(input.nextAt);
-    const row={id:old?.id || randomUUID(),kind:input.kind,title,text,repeat:input.repeat,clock:time.getHours()*60+time.getMinutes(),
-      chatId:input.kind==="task"?input.chatId:"",nextAt:input.nextAt,enabled:old?.nextAt ? old.enabled : true,
+    const row={id:old?.id || randomUUID(),kind:input.kind,title,text,repeat:input.repeat,
+      clock:startup?null:time.getHours()*60+time.getMinutes(),startupSeen:startup?this.bootId:undefined,
+      chatId:input.kind==="task"?input.chatId:"",nextAt:startup?null:input.nextAt,
+      enabled:old && (old.repeat==="startup" || old.nextAt!=null) ? old.enabled : true,
       lastAt:old?.lastAt || null,lastStatus:old?.lastStatus || ""};
     this.deferred.delete(row.id);
     if(old)this.replace(row);else this.commit([...this.rows,row]);
@@ -67,19 +74,21 @@ class ScheduleStore {
   }
   toggle(id) {
     const row=this.rows.find(item=>item.id===id);
-    if(!row || row.runId || row.nextAt===null)return;
-    this.replace({...row,enabled:!row.enabled});
+    if(!row || row.runId || (row.nextAt===null && row.repeat!=="startup"))return;
+    const startupSeen=row.repeat==="startup" && !row.enabled ? this.bootId : row.startupSeen;
+    this.replace({...row,enabled:!row.enabled,startupSeen});
   }
   remove(id) {
     this.commit(this.rows.filter(row=>row.id!==id || row.runId));
     this.deferred.delete(id);
   }
   retireChat(chatId,now=Date.now()) {
-    this.commit(this.rows.map(row=>row.chatId===chatId ? {...row,enabled:false,runId:null,lastStatus:"missing",lastAt:now} : row));
+    this.commit(this.rows.map(row=>row.chatId===chatId ? {...row,enabled:false,runId:null,runBootId:null,lastStatus:"missing",lastAt:now} : row));
   }
   claim(now=Date.now(), canRun=false) {
-    const due=this.rows.filter(row => row.enabled && row.nextAt<=now && row.nextAt!=null && !row.runId)
-      .sort((a,b)=>a.nextAt-b.nextAt);
+    const due=this.rows.filter(row => row.enabled && !row.runId && (row.repeat==="startup" ?
+      this.bootId && row.startupSeen!==this.bootId : row.nextAt!=null && row.nextAt<=now))
+      .sort((a,b)=>(a.nextAt ?? now)-(b.nextAt ?? now));
     const taskBusy=this.rows.some(row=>row.runId);
     const row=due.find(item=>item.kind==="reminder" || (canRun && !taskBusy && (this.deferred.get(item.id)||0)<=now));
     if(!row)return null;
@@ -88,7 +97,7 @@ class ScheduleStore {
       return {...row};
     }
     // Persist the claim before dispatch so a crash cannot rerun an interrupted task.
-    const running={...row,runId:randomUUID()};
+    const running={...row,runId:randomUUID(),runBootId:row.repeat==="startup"?this.bootId:undefined};
     this.replace(running);
     return running;
   }
@@ -97,9 +106,9 @@ class ScheduleStore {
     if(!row)return null;
     if(status==="busy"){
       this.deferred.set(id,now+15000);
-      this.replace({...row,runId:null});
+      this.replace({...row,runId:null,runBootId:null});
     }else if(status==="missing"){
-      this.replace({...row,enabled:false,runId:null,lastStatus:status,lastAt:now});
+      this.replace({...row,enabled:false,runId:null,runBootId:null,lastStatus:status,lastAt:now});
     }else{
       this.deferred.delete(id);
       this.replace(this.closed(row,status,now));

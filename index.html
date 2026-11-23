@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="appearance.css">
 <link rel="stylesheet" href="workspace.css">
 <link rel="stylesheet" href="schedules.css">
+<link rel="stylesheet" href="liquid-glass.css">
 </head>
 <body>
 <div class="wallpaper" id="wallpaper" aria-hidden="true"><img id="customWallpaper" alt=""></div>
@@ -207,6 +208,7 @@
         <button type="button" data-settings="discord" aria-pressed="false"><span aria-hidden="true">▤</span> Discord</button>
       </div>
       <div class="settings-group">
+        <button type="button" data-settings="startup" aria-pressed="false"><span aria-hidden="true">⏻</span> Indítás</button>
         <button type="button" data-settings="updates" aria-pressed="false"><span aria-hidden="true">↻</span> Frissítések</button>
       </div>
     </nav>
@@ -262,6 +264,11 @@
       <p id="gmailFeedback" role="status"></p>
     </section>
     <section id="outboxSection" data-panel="gmail" hidden><h3>Küldési sor</h3><div id="gmailOutbox"></div></section>
+    <section data-panel="startup" hidden>
+      <h3>Automatikus indítás</h3>
+      <label class="startup-toggle"><span><strong>Neutron indítása bejelentkezéskor</strong><small>A számítógép bekapcsolása után az asztali bejelentkezéskor nyílik meg.</small></span><input type="checkbox" id="startupToggle" disabled></label>
+      <p id="startupStatus" role="status"></p>
+    </section>
     <section data-panel="updates" hidden><h3>Neutron-frissítések</h3><div class="settings-account"><div><strong id="appVersion"></strong><small id="updateMessage"></small></div><button class="btn" id="updateCheck" hidden>Frissítés keresése</button></div><button class="btn" id="showReleaseNotes">Kiadási megjegyzések</button></section>
   </div>
   </div>
@@ -275,9 +282,10 @@
       <label>Típus<select id="scheduleKind"><option value="reminder">Emlékeztető</option><option value="task">Chatfeladat</option></select></label>
       <label>Cím<input id="scheduleName" maxlength="100" required></label>
       <div class="schedule-fields">
-        <label>Első időpont<input id="scheduleAt" type="datetime-local" required></label>
-        <label>Ismétlés<select id="scheduleRepeat"><option value="once">Egyszer</option><option value="daily">Naponta</option><option value="weekly">Hetente</option></select></label>
+        <label id="scheduleAtLabel">Első időpont<input id="scheduleAt" type="datetime-local" required></label>
+        <label>Mikor fusson?<select id="scheduleRepeat"><option value="once">Egyszer</option><option value="daily">Naponta</option><option value="weekly">Hetente</option><option value="startup">Rendszerindítás után</option></select></label>
       </div>
+      <small id="startupScheduleHelp" hidden>A feladat a következő rendszerindítás utáni első Neutron-indításkor válik esedékessé.</small>
       <label id="scheduleTargetLabel" hidden>Csevegés<select id="scheduleTarget"></select><small>A feladat a csevegés aktuális modelljével fut.</small></label>
       <label><span id="scheduleTextLabel">Megjegyzés</span><textarea id="scheduleText" rows="4" maxlength="12000"></textarea></label>
       <p id="scheduleFeedback" role="status"></p>

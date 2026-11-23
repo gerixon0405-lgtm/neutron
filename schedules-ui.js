@@ -3,7 +3,7 @@
 const schedulesDialog=$("#schedulesDialog"), scheduleForm=$("#scheduleForm");
 const scheduleDate=new Intl.DateTimeFormat("hu-HU",{dateStyle:"medium",timeStyle:"short"});
 const scheduleStatus={done:"Befejezve",failed:"Hibával zárult",stopped:"Leállítva",interrupted:"Megszakadt kilépéskor",missing:"A csevegés vagy fiók hiányzik"};
-const repeatNames={once:"Egyszer",daily:"Naponta",weekly:"Hetente"};
+const repeatNames={once:"Egyszer",daily:"Naponta",weekly:"Hetente",startup:"Rendszerindítás után"};
 let editingSchedule="", currentSchedules=[];
 
 function toLocalInput(timestamp) {
@@ -17,6 +17,10 @@ function scheduleLabel() {
   $("#scheduleTarget").required=task;
   $("#scheduleText").required=task;
   $("#scheduleTextLabel").textContent=task?"Feladat":"Megjegyzés";
+  const startup=$("#scheduleRepeat").value==="startup";
+  $("#scheduleAtLabel").hidden=startup;
+  $("#scheduleAt").disabled=startup;
+  $("#startupScheduleHelp").hidden=!startup;
 }
 
 function fillScheduleForm(record={}) {
@@ -57,7 +61,8 @@ function renderSchedules(rows) {
     const item=document.createElement("article"), heading=document.createElement("strong"), details=document.createElement("small");
     item.className="schedule-row";
     heading.textContent=row.title;
-    const timing=row.enabled && row.nextAt ? scheduleDate.format(row.nextAt) : row.nextAt ? "Szünetel" : "Egyszeri ütemezés";
+    const timing=row.repeat==="startup" ? row.enabled?"Első Neutron-indításkor":"Szünetel" :
+      row.enabled && row.nextAt ? scheduleDate.format(row.nextAt) : row.nextAt ? "Szünetel" : "Egyszeri ütemezés";
     details.textContent=[row.kind==="task"?"Chatfeladat":"Emlékeztető",repeatNames[row.repeat],timing].join(" · ");
     item.append(heading,details);
     if(row.runId || row.lastStatus){
@@ -69,7 +74,7 @@ function renderSchedules(rows) {
     actions.className="schedule-actions";
     actions.append(
       scheduleAction("Szerkesztés",()=>fillScheduleForm(row),!!row.runId),
-      scheduleAction(row.enabled?"Szüneteltetés":"Bekapcsolás",()=>N.schedules.toggle(row.id),!!row.runId || !row.nextAt),
+      scheduleAction(row.enabled?"Szüneteltetés":"Bekapcsolás",()=>N.schedules.toggle(row.id),!!row.runId || (!row.nextAt && row.repeat!=="startup")),
       scheduleAction("Törlés",async()=>{
         if(!confirm("Törlöd ezt az ütemezést? "+row.title))return;
         await N.schedules.remove(row.id);
@@ -87,6 +92,7 @@ function openScheduleDialog(draft) {
   N.schedules.list().then(renderSchedules).catch(error=>{$("#scheduleFeedback").textContent=error.message;});
 }
 $("#scheduleKind").onchange=scheduleLabel;
+$("#scheduleRepeat").onchange=scheduleLabel;
 $("#closeSchedules").onclick=()=>schedulesDialog.close();
 $("#schedulesBtn").onclick=()=>openScheduleDialog();
 $("#newSchedule").onclick=()=>fillScheduleForm();
@@ -95,7 +101,8 @@ scheduleForm.onsubmit=async event=>{
   event.preventDefault();
   const button=event.submitter;button.disabled=true;
   const job={id:editingSchedule,kind:$("#scheduleKind").value,title:$("#scheduleName").value,text:$("#scheduleText").value,
-    chatId:$("#scheduleTarget").value,repeat:$("#scheduleRepeat").value,nextAt:new Date($("#scheduleAt").value).getTime()};
+    chatId:$("#scheduleTarget").value,repeat:$("#scheduleRepeat").value,
+    nextAt:$("#scheduleAt").disabled ? null : new Date($("#scheduleAt").value).getTime()};
   try {
     if(job.kind==="task" && chat?.id===job.chatId && !chats.some(c=>c.id===job.chatId)){await save(chat);await refreshList();}
     const saved=await N.schedules.save(job);
@@ -109,7 +116,8 @@ N.schedules.onRun(async job=>{
   try{
     const target=await getChat(job.chatId);
     if(!target || !hasChatProvider(target))return N.schedules.finish(job.id,job.runId,"missing");
-    if(live.has(target.id) || termChatId===target.id)return N.schedules.finish(job.id,job.runId,"busy");
+    if(live.has(target.id) || termChatId===target.id || (target.provider==="fcc" && fccWarmingUp))
+      return N.schedules.finish(job.id,job.runId,"busy");
     if(!await submit(target,job.text,true,null,[],job))N.schedules.finish(job.id,job.runId,"busy");
   }catch{
     N.schedules.finish(job.id,job.runId,"failed");

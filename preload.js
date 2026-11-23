@@ -98,6 +98,10 @@ else if (process.isMainFrame && location.protocol === "file:") contextBridge.exp
     usage: (id) => ipcRenderer.invoke("accounts:usage", id),
   },
   home: () => ipcRenderer.invoke("home"),
+  startup: {
+    status: () => ipcRenderer.invoke("startup:status"),
+    set: enabled => ipcRenderer.invoke("startup:set",enabled),
+  },
   notices: {
     complete: notice => ipcRenderer.send("notices:complete",notice),
     onNotice: on("notices:show"),

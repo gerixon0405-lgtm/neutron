@@ -247,9 +247,41 @@ async function connect() {
     })()`);
     if(!result) throw Error("Packaged appearance, notes or settings did not work");
     await screenshot("notes");
+    await evaluate(`(()=>{
+      document.querySelector('#releaseDialog').close();
+      document.querySelector('[data-settings=appearance]').click();
+      const form=document.querySelector('#appearanceForm');
+      form.querySelector('[name=theme][value=glass]').click();
+      form.requestSubmit(form.querySelector('button[type=submit]'));
+    })()`);
+    await wait("(async()=> document.documentElement.dataset.theme==='glass' && (await N.config.get()).appearance.theme==='glass')()");
+    const login=await evaluate("N.startup.status()");
+    if(!process.env.NEUTRON_DEV_TEST && !login.available)throw Error("Installed startup settings are unavailable");
+    if(login.available){
+      await evaluate("document.querySelector('[data-settings=startup]').click()");
+      await wait("!document.querySelector('#startupToggle').disabled");
+      try{
+        if(login.enabled)await evaluate("N.startup.set(false)");
+        await evaluate("refreshStartup()");
+        await evaluate("document.querySelector('#startupToggle').click()");
+        await wait("(async()=> !document.querySelector('#startupToggle').disabled && (await N.startup.status()).enabled)()");
+        await screenshot("startup");
+        await evaluate("document.querySelector('#startupToggle').click()");
+        await wait("(async()=> !document.querySelector('#startupToggle').disabled && !(await N.startup.status()).enabled)()");
+      }finally{await evaluate("N.startup.set("+!!login.enabled+")");}
+    }
     await evaluate(`(async()=>{
       document.querySelector('#releaseDialog').close();
       document.querySelector('#settingsDialog').close();
+      newChat();
+      chat.items=[{role:'user',text:'Előnézet'},{role:'assistant',blocks:[{type:'text',text:'Liquid Glass a beszélgetésben.'}]}];
+      renderChat();
+      if(document.querySelector('.msg.assistant .avatar').offsetWidth<44 ||
+        getComputedStyle(document.querySelector('.topbar')).backdropFilter==='none')
+        throw Error('Larger chat avatar or glass surface missing');
+    })()`);
+    await screenshot("glass");
+    await evaluate(`(async()=>{
       newChat();
       chat.title='Rögzíthető próbachat';
       globalThis.probePinnedId=chat.id;
@@ -271,6 +303,16 @@ async function connect() {
     await wait("document.querySelector('.notice-content')?.textContent.includes('Próbaemlékeztető')");
     await evaluate("document.querySelector('.notice-content').click()");
     await wait("document.querySelector('#schedulesDialog').open && document.querySelector('#scheduleList').textContent.includes('Befejezve')");
+    await evaluate(`(()=>{
+      const select=document.querySelector('#scheduleRepeat');
+      select.value='startup';select.dispatchEvent(new Event('change'));
+      if(!document.querySelector('#scheduleAt').disabled || document.querySelector('#startupScheduleHelp').hidden)
+        throw Error('Boot trigger still requires a date');
+      document.querySelector('#scheduleName').value='Próba rendszerindítás';
+      const form=document.querySelector('#scheduleForm');
+      form.requestSubmit(form.querySelector('button[type=submit]'));
+    })()`);
+    await wait("(async()=> (await N.schedules.list()).some(job=>job.repeat==='startup' && job.title==='Próba rendszerindítás' && !job.lastAt))()");
     await screenshot("schedules");
     await evaluate("document.querySelector('#closeSchedules').click()");
   } finally { ws.close(); }

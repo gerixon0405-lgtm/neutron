@@ -45,6 +45,8 @@ Never claim you will check back later without scheduling a wakeup.`;
 const context = require("./chat-context");
 const hybrid = require("./nemotron-hybrid");
 const {ScheduleStore} = require("./neutron-schedules");
+const {loginController,systemBootId} = require("./startup");
+const loginStartup=loginController(app);
 let win;
 let scheduleStore, scheduleReady=false;
 const sessions = new Map(); // chatId -> child process (headless fcc-claude)
@@ -52,7 +54,12 @@ let term = null; // the one embedded TUI (fcc-claude in a pty)
 
 const send = (ch, data) => win && !win.isDestroyed() && win.webContents.send(ch, data);
 
-const schedules = () => scheduleStore ||= new ScheduleStore(path.join(HOME,".neutron-schedules.json"));
+let bootId="";
+const bootIdentity=systemBootId().catch(()=> "").then(id=>{
+  bootId=id;
+  if(scheduleStore)scheduleStore.bootId=id;
+});
+const schedules = () => scheduleStore ||= new ScheduleStore(path.join(HOME,".neutron-schedules.json"),bootId);
 function publishNotice(input) {
   const notice={title:String(input.title || "").slice(0,130),body:String(input.body || "").slice(0,250),
     chatId:typeof input.chatId==="string"?input.chatId:"",kind:["schedule","video"].includes(input.kind)?input.kind:"chat",failed:!!input.failed};
@@ -83,7 +90,8 @@ function scheduleTick() {
 const scheduleTimer=setInterval(scheduleTick,1000);
 scheduleTimer.unref();
 ipcMain.handle("schedules:list",()=>schedules().list());
-ipcMain.handle("schedules:save",(_,job)=>{
+ipcMain.handle("schedules:save",async (_,job)=>{
+  if(job.repeat==="startup")await bootIdentity;
   if(job.kind==="task" && !listChats().some(chat=>chat.id===job.chatId))throw Error("A feladatnak válassz egy mentett csevegést.");
   const row=schedules().save(job);updateScheduleUi();return row;
 });
@@ -98,6 +106,8 @@ ipcMain.on("schedules:finish",(_, {id,runId,status})=>{
   if(status==="missing")publishNotice({title:"Az ütemezett feladat szünetel",body:job.title,kind:"schedule",failed:true});
 });
 ipcMain.on("notices:complete",(_,notice)=>publishNotice(notice));
+ipcMain.handle("startup:status",()=>loginStartup.status());
+ipcMain.handle("startup:set",(_,enabled)=>loginStartup.set(enabled===true));
 
 // ---------- storage ----------
 function loadConfig() {
@@ -337,7 +347,7 @@ function showVoiceHud(message){
     child.on("error",()=>{if(overlay===child)overlay=null;});
     child.on("close",()=>{if(overlay===child)overlay=null;});
   }
-  overlay?.stdin.write(JSON.stringify(message || null)+"\n");
+  overlay?.stdin.write(JSON.stringify(message ? {...message,theme:loadConfig().appearance?.theme} : null)+"\n");
   if(message && ["idle","error"].includes(message.state)) hudTimer=setTimeout(()=>showVoiceHud(null),5500);
 }
 async function captureVoiceScreen(){
@@ -394,6 +404,11 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+app.on("second-instance",()=>{
+  if(!win || win.isDestroyed())return;
+  if(win.isMinimized())win.restore();
+  win.show();win.focus();
+});
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => { voice.close(); for (const id of [...sessions.keys()]) stopSession(id); stopTerm(); });
 
@@ -420,7 +435,7 @@ require("./spotify-auth").register();
 require("./discord-main").register();
 require("./speech-cloud").register();
 require("./video-editor").register(()=>win,launchSpec,fccEffortArgs);
-require("./updater").register();
+require("./updater").register(loginStartup.updateAppImage);
 ipcMain.handle("config:get", () => loadConfig());
 ipcMain.handle("config:set", (_, c) => { saveConfig(c); return true; });
 ipcMain.handle("chats:list", () => listChats());
