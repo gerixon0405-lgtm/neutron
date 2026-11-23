@@ -29,7 +29,7 @@ function options(chat) {
   return args;
 }
 
-function run(chat, text, notify, done, jpeg=null, images=[]) {
+function run(chat, text, notify, done, jpeg=null) {
   const args = ["exec", ...options(chat), "--json", "--skip-git-repo-check"];
   if (chat.codexThread) args.push("resume", chat.codexThread);
   let imageDir;
@@ -37,7 +37,6 @@ function run(chat, text, notify, done, jpeg=null, images=[]) {
     imageDir=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-screen-"));
     const file=path.join(imageDir,"screen.jpg");fs.writeFileSync(file,jpeg,{mode:0o600});args.push("--image",file);
   }
-  for (const image of images) args.push("--image",image);
   args.push("--", "-");
   const child = spawn(binary(), args, { cwd: chat.cwd, stdio: ["pipe", "pipe", "pipe"] });
   if(imageDir) child.once("close",()=>fs.rmSync(imageDir,{recursive:true,force:true}));

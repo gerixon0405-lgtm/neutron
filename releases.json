@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.2.3",
+    "title": "Helyi mellékletek és új hátterek",
+    "changes": [
+      "A fájlok helyi hivatkozásként csatolhatók, így nincs 20 MB-os mérethatár, és a Neutron nem készít másolatot.",
+      "Négy új színtéma, három beépített háttérkép és saját háttér kiválasztása a Megjelenés menüben.",
+      "A Neutron új, ImageGen segítségével készült logót kapott.",
+      "Új karakter létrehozásakor a személyiségleírás választható."
+    ]
+  },
+  {
     "version": "1.2.2",
     "title": "Letisztult chat, több Gmail-fiók és magyar hang",
     "changes": [

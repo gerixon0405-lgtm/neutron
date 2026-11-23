@@ -76,7 +76,7 @@ function setMd(div, text) {
     accent.secondary = style.getPropertyValue("--a2");
     cancelAnimationFrame(frameId);
     ctx.clearRect(0, 0, W, H);
-    if (!document.documentElement.matches('[data-motion="reduced"], [data-background="plain"]')) frame();
+    if (document.documentElement.dataset.background==="ambient" && document.documentElement.dataset.motion!=="reduced") frame();
   });
   function frame() {
     if (!document.hidden) {
@@ -229,7 +229,7 @@ function itemEl(it) {
     for(const row of it.files || []){
       const file=document.createElement("button");
       file.className="sent-file";file.type="button";file.textContent=row.name;
-      file.title="Helyi másolat megjelenítése";
+      file.title="A helyi fájl megjelenítése";
       file.onclick=()=>N.uploads.reveal(owner,row).catch(error=>toast(error.message,true));
       wrap.firstElementChild.append(file);
     }
@@ -1249,7 +1249,7 @@ $("#characterForm").onsubmit = async event => {
   const provider = profileProvider.value;
   const profile = { id: editingId || crypto.randomUUID(), avatar, name: $("#characterName").value.trim(),
     prompt: $("#characterPrompt").value.trim(), provider, model: profileModel.value.trim() };
-  if (!profile.name || !profile.prompt) return status.textContent = "Adj nevet és személyiségleírást a karakternek.";
+  if (!profile.name) return status.textContent = "Adj nevet a karakternek.";
   if (!provider || (provider === "fcc" && !profile.model)) return status.textContent = "Válassz elérhető fiókot és modellt.";
   const characters = editingId ? cfg.characters.map(c => c.id === editingId ? profile : c) : [...cfg.characters, profile];
   try {

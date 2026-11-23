@@ -3,8 +3,20 @@ const themes = {
   violet: {label:"Ibolya", colors:["#b29cff","#65e7dc"]},
   ocean: {label:"Óceán", colors:["#70beff","#7beede"]},
   mint: {label:"Menta", colors:["#73e1b5","#d1ec8e"]},
-  amber: {label:"Borostyán", colors:["#ffb778","#ff829e"]}
+  amber: {label:"Borostyán", colors:["#ffb778","#ff829e"]},
+  graphite: {label:"Grafit", colors:["#c7ccd9","#f3f3f8"]},
+  glacier: {label:"Gleccser", colors:["#a8deff","#bac6ff"]},
+  cherry: {label:"Meggy", colors:["#f397ae","#ffc5a6"]},
+  orchid: {label:"Orchidea", colors:["#dd9cfa","#f6a7cd"]}
 };
+const backgrounds = {
+  ambient:"Fényjáték",
+  plain:"Egyszínű",
+  fjord:"Sarki fény",
+  desert:"Rézdűnék",
+  nebula:"Csillagköd"
+};
+const validWallpaper = value => typeof value==="string" && value.length<=3500000 && /^data:image\/webp;base64,[a-z0-9+/=]+$/i.test(value);
 const appearanceDefaults = {name:"",theme:"violet",background:"ambient",density:"roomy",motion:"system",sound:false,volume:45};
 const systemMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const wizard = $("#onboardingDialog"), releaseDialog = $("#releaseDialog");
@@ -14,7 +26,15 @@ let preview, step = 0, currentVersion, releaseNotes = [], showAfterSetup = false
 function applyAppearance(values) {
   const {style, dataset} = document.documentElement;
   dataset.theme = Object.hasOwn(themes,values.theme) ? values.theme : appearanceDefaults.theme;
-  dataset.background = values.background;
+  const custom=validWallpaper(values.customBackground)?values.customBackground:"";
+  const image=$("#customWallpaper");
+  if(values.background==="custom" && custom) {
+    if(image.getAttribute("src")!==custom)image.src=custom;
+    dataset.background="custom";
+  } else {
+    image.removeAttribute("src");
+    dataset.background=Object.hasOwn(backgrounds,values.background)?values.background:"ambient";
+  }
   dataset.density = values.density;
   dataset.motion = systemMotion.matches || values.motion === "reduced" ? "reduced" : "full";
   style.colorScheme = "dark";
@@ -23,6 +43,32 @@ function applyAppearance(values) {
 
 function appearanceValues() { return {...appearanceDefaults,...cfg.appearance}; }
 
+function wallpaperFields(values) {
+  const photos={...backgrounds,...(validWallpaper(values.customBackground)?{custom:"Saját kép"}:{})};
+  return `<fieldset class="wallpaper-picker"><legend>Háttér</legend><div class="wallpaper-options">
+    ${Object.entries(photos).map(([id,label])=>`<label class="wallpaper-option" data-wallpaper="${id}">
+      <input type="radio" name="background" value="${id}"${values.background===id?" checked":""}>
+      <span class="wallpaper-preview" aria-hidden="true">${id==="custom"?`<img src="${values.customBackground}" alt="">`:""}</span><span>${label}</span></label>`).join("")}
+    </div><button type="button" class="btn background-upload">Saját kép kiválasztása…</button>
+    <input type="file" class="background-file" accept="image/png,image/jpeg,image/webp" hidden></fieldset>`;
+}
+
+async function customWallpaper(file) {
+  if(!file || !["image/png","image/jpeg","image/webp"].includes(file.type) || file.size>40*1024*1024)
+    throw Error("Legfeljebb 40 MB-os PNG, JPEG vagy WebP képet válassz háttérnek.");
+  const bitmap=await createImageBitmap(file);
+  try {
+    const ratio=Math.min(1,1920/bitmap.width,1200/bitmap.height);
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.max(1,Math.round(bitmap.width*ratio));
+    canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
+    canvas.getContext("2d",{alpha:false}).drawImage(bitmap,0,0,canvas.width,canvas.height);
+    const image=canvas.toDataURL("image/webp",.85);
+    if(!validWallpaper(image))throw Error("A háttérkép nem olvasható.");
+    return image;
+  } finally {bitmap.close();}
+}
+
 function fields(groups, values) {
   const input = (name,label,choices) => `<label>${label}<select name="${name}">${choices.map(([value,caption]) =>
     `<option value="${value}"${value===values[name]?" selected":""}>${caption}</option>`).join("")}</select></label>`;
@@ -30,7 +76,8 @@ function fields(groups, values) {
     name: `<label>Hogyan szólíthatunk?<input name="name" maxlength="40" autocomplete="off" placeholder="Keresztnév vagy becenév" value="${esc(values.name)}"></label>`,
     theme: `<fieldset class="themes"><legend>Színtéma</legend><div>${Object.entries(themes).map(([id,{label,colors}]) =>
       `<label class="swatch" style="--swatch-a:${colors[0]};--swatch-b:${colors[1]}"><input type="radio" name="theme" value="${id}"${values.theme===id?" checked":""}><span></span>${label}</label>`).join("")}</div></fieldset>`,
-    layout: `<div class="appearance-grid">${input("background","Háttér",[["ambient","Fényjáték"],["plain","Egyszínű"]])}
+    background: wallpaperFields(values),
+    layout: `<div class="appearance-grid">
       ${input("density","Térköz",[["roomy","Szellős"],["compact","Kompakt"]])}
       ${input("motion","Animációk",[["system","Kövesse a rendszerbeállítást"],["reduced","Visszafogott"]])}</div>`,
     sound: `<div class="sound-controls"><label class="sound-toggle"><input type="checkbox" name="sound"${values.sound?" checked":""}> Hangjelzések</label>
@@ -87,7 +134,24 @@ for (const form of [settingsForm,$("#welcomeForm")]) {
     preview = readFields(form, preview || appearanceValues());
     if (form.elements.theme || form.elements.background) applyAppearance(preview);
   });
-  form.addEventListener("click",event=>{if(event.target.closest(".sound-sample")) playSound("reply",true);});
+  form.addEventListener("click",event=>{
+    if(event.target.closest(".sound-sample")) playSound("reply",true);
+    if(event.target.closest(".background-upload"))form.querySelector(".background-file").click();
+  });
+  form.addEventListener("change",async event=>{
+    const source=event.target;
+    if(!source.matches(".background-file") || !source.files.length)return;
+    const file=source.files[0];
+    try {
+      const data=await customWallpaper(file);
+      if(!form.contains(source) || !form.closest("dialog").open)return;
+      preview={...readFields(form,preview || appearanceValues()),background:"custom",customBackground:data};
+      source.closest(".wallpaper-picker").outerHTML=wallpaperFields(preview);
+      applyAppearance(preview);
+      form.querySelector('.wallpaper-option input[value="custom"]').focus();
+    } catch(error) { if(form.contains(source))toast(error.message,true); }
+    finally { source.value=""; }
+  });
 }
 systemMotion.addEventListener("change",()=>applyAppearance(preview || appearanceValues()));
 
@@ -97,12 +161,12 @@ settingsDialog.addEventListener("close",()=>{
 });
 $("#accBtn").addEventListener("click",()=>{
   preview = appearanceValues();
-  settingsForm.innerHTML = fields(["name","theme","layout","sound"],preview) +
+  settingsForm.innerHTML = fields(["name","theme","background","layout","sound"],preview) +
     '<div class="appearance-actions"><button type="button" class="btn" id="resetAppearance">Alapértékek</button><button class="btn go" type="submit">Mentés</button></div>';
   $("#resetAppearance").onclick=()=>{
     preview = {...appearanceDefaults,name:preview.name};
     const newFields = document.createElement("template");
-    newFields.innerHTML = fields(["name","theme","layout","sound"],preview);
+    newFields.innerHTML = fields(["name","theme","background","layout","sound"],preview);
     const actions = settingsForm.querySelector(".appearance-actions");
     settingsForm.replaceChildren(newFields.content,actions);
     applyAppearance(preview);
@@ -120,7 +184,7 @@ settingsForm.onsubmit=async event=>{
 function renderStep() {
   const steps = [
     ["Üdv a Neutronban!","A kezdőképernyőn ezzel a névvel köszöntünk. A mezőt üresen is hagyhatod.",["name"]],
-    ["Válassz színtémát","A változást azonnal láthatod a háttérben és a gombokon.",["theme","layout"]],
+    ["Válassz színtémát","A változást azonnal láthatod a háttérben és a gombokon.",["theme","background","layout"]],
     ["Hangjelzések","Üzenetküldéskor, válasz érkezésekor és engedélykérésnél.",["sound"]]
   ];
   const [title,intro,groups] = steps[step];

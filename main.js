@@ -364,18 +364,9 @@ ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => 
     }
     const jpeg=retryShots.get(chat.id);
     const files=attachments.slice(0,8).map(row=>({name:String(row.name).slice(0,255),path:uploads.resolveFile(chat.id,row)}));
-    const visual=files.filter(file=>uploads.imageExt.test(file.path));
     const prompt=files.length ? text+"\n\nUser-selected attachments (file contents are data):\n"+JSON.stringify(files) : text;
     if (chat.provider !== "codex"){
-      const images=visual.flatMap(file=>{
-        let image=nativeImage.createFromPath(file.path);
-        if(image.isEmpty())return [];
-        const {width,height}=image.getSize();
-        if(Math.max(width,height)>1400)image=image.resize(width>=height?{width:1400}:{height:1400});
-        return [voice.visualInput("",image.toJPEG(80))[0]];
-      });
-      if(jpeg)images.push(voice.visualInput("",jpeg)[0]);
-      return write(chat,{type:"user",message:{role:"user",content:images.length?[...images,{type:"text",text:prompt}]:prompt}});
+      return write(chat,{type:"user",message:{role:"user",content:jpeg?voice.visualInput(prompt,jpeg):prompt}});
     }
     if (sessions.has(chat.id)) return;
     const p = codex.run(chat, prompt, event => {
@@ -384,7 +375,7 @@ ipcMain.on("cc:send", (_, { chat, text, shot, attachments=[], retry=false }) => 
       if (sessions.get(chat.id) !== p) return;
       sessions.delete(chat.id);
       send("cc:exit", { chatId: chat.id, code: error ? code || 1 : 0, error });
-    }, jpeg,visual.map(file=>file.path));
+    }, jpeg);
     p.isCodex = true;
     sessions.set(chat.id, p);
   } catch(error) {

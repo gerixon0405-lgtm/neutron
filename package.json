@@ -1,7 +1,7 @@
 {
   "name": "neutron",
   "productName": "Neutron",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Neutron AI-munkatér",
   "main": "desktop.js",
   "scripts": {
@@ -31,6 +31,7 @@
       "*.css",
       "releases.json",
       "*.png",
+      "wallpapers/*.webp",
       "*.py",
       "!test_*.py",
       "package.json"

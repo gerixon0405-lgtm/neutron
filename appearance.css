@@ -224,3 +224,32 @@ body { background: radial-gradient(ellipse at 56% -24%, var(--tint), var(--bg) 6
 .composer:focus-within { box-shadow:0 0 0 3px var(--glow); }
 .composer:not(.busy):focus-within::before { opacity:.24; animation:none; }
 #projectHub .project-bar select { background:var(--bg); }
+
+:root[data-theme="graphite"] { --bg:#101115; --surface:#181a20; --raised:#22242c; --glass:#17191fe8; --glass-2:#2a2c35bb; --a1:#c7ccd9; --a2:#f3f3f8; }
+:root[data-theme="glacier"] { --bg:#101926; --surface:#182334; --raised:#243247; --glass:#172334e8; --glass-2:#2b3c53bb; --a1:#a8deff; --a2:#bac6ff; }
+:root[data-theme="cherry"] { --bg:#1c1117; --surface:#271921; --raised:#39232c; --glass:#271921eb; --glass-2:#47313bbb; --a1:#f397ae; --a2:#ffc5a6; }
+:root[data-theme="orchid"] { --bg:#180f21; --surface:#241932; --raised:#322143; --glass:#21172fe8; --glass-2:#402c51bb; --a1:#dd9cfa; --a2:#f6a7cd; }
+
+.wallpaper { position:fixed; inset:0; z-index:0; pointer-events:none; display:none; background: center / cover no-repeat var(--wallpaper-image); }
+.wallpaper::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,#090c14a0,#090c14ca); }
+.wallpaper img { width:100%; height:100%; object-fit:cover; display:none; }
+[data-background="fjord"],[data-wallpaper="fjord"] { --wallpaper-image:url("wallpapers/fjord.webp"); }
+[data-background="desert"],[data-wallpaper="desert"] { --wallpaper-image:url("wallpapers/desert.webp"); }
+[data-background="nebula"],[data-wallpaper="nebula"] { --wallpaper-image:url("wallpapers/nebula.webp"); }
+[data-background]:not([data-background="ambient"],[data-background="plain"]) .wallpaper,
+[data-background="custom"] .wallpaper img { display:block; }
+[data-background]:not([data-background="ambient"]) :is(#stars,.aurora) { display:none; }
+
+.wallpaper-picker { border:0; min-width:0; }
+.wallpaper-picker legend { margin-bottom:6px; color:var(--muted); font-size:13px; }
+.wallpaper-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.appearance-form .wallpaper-option { position:relative; padding:5px 6px; border:1px solid var(--line); min-width:0;
+  border-radius:10px; background:var(--bg); cursor:pointer; font-size:12px; text-align:center; }
+.wallpaper-option input[type="radio"] { position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }
+.wallpaper-option:has(:checked),.wallpaper-option:hover { border-color:var(--a2); color:var(--ink); }
+.wallpaper-option:has(:focus-visible) { outline:2px solid var(--a2); outline-offset:2px; }
+.wallpaper-preview { height:42px; border-radius:6px; overflow:hidden; background:center / cover no-repeat var(--wallpaper-image,var(--surface)); }
+[data-wallpaper="ambient"] .wallpaper-preview { background:radial-gradient(at 78% 30%,var(--glow),var(--surface)); }
+.wallpaper-preview img { width:100%; height:100%; object-fit:cover; display:block; }
+.background-upload { margin-top:8px; }
+.appearance-grid { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:6px; }

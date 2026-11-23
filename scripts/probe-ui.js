@@ -57,6 +57,8 @@ async function connect() {
       form.elements.name.value='Dani';
       document.querySelector('#welcomeNext').click();
       form.querySelector('[value=mint]').click();
+      form.querySelector('[value=fjord]').click();
+      if(document.documentElement.dataset.background!=='fjord') throw Error('Wallpaper preview missing');
       if(document.documentElement.dataset.theme!=='mint') throw Error('Theme preview missing');
       form.elements.motion.value='reduced';
       document.querySelector('#welcomeNext').click();
@@ -83,6 +85,18 @@ async function connect() {
       return visible && document.querySelector('#effortBar').hidden && opened;
     })()`);
     if(!toolbar)throw Error("Chat toolbar or project navigation did not work");
+    await evaluate(`(()=>{
+      document.querySelector('#charactersBtn').click();
+      document.querySelector('#addProfile').click();
+      const form=document.querySelector('#characterForm');
+      document.querySelector('#characterName').value="Teszt karakter";
+      document.querySelector('#characterProvider').value="codex";
+      document.querySelector('#characterProvider').dispatchEvent(new Event("change"));
+      form.requestSubmit(form.querySelector('button[type=submit]'));
+    })()`);
+    await wait("cfg.characters?.some(character=>character.name==='Teszt karakter' && character.prompt==='')");
+    await evaluate("document.querySelector('#closeCharacters').click()");
+
 
     const fixtures=fs.mkdtempSync(path.join(os.tmpdir(),"neutron-drop-"));
     try{
@@ -102,6 +116,14 @@ async function connect() {
       await wait("document.querySelector('#composerFiles').hidden");
     } finally { fs.rmSync(fixtures,{recursive:true,force:true}); }
 
+    await evaluate("document.querySelector('#accBtn').click()");
+    const {root}=await call("DOM.getDocument",{});
+    const {nodeId}=await call("DOM.querySelector",{nodeId:root.nodeId,selector:"#appearanceForm .background-file"});
+    await call("DOM.setFileInputFiles",{nodeId,files:[path.resolve("wallpapers/nebula.webp")]});
+    await wait("document.documentElement.dataset.background==='custom'");
+    await evaluate("document.querySelector('#appearanceForm').requestSubmit(document.querySelector('#appearanceForm button[type=submit]'))");
+    await wait("(async()=>{const settings=await N.config.get();return settings.appearance?.background==='custom' && !!settings.appearance.customBackground;})()");
+    await evaluate("document.querySelector('#settingsClose').click()");
     const result = await evaluate(`(async()=>{
       const request={chatId:chat.id,requestId:'smoke',tool:'Bash',input:{command:'echo smoke'}};
       pendingPermissions.add(request);live.set(chat.id,{});renderQuickPermission();

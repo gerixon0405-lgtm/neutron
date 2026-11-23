@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="appearance.css">
 </head>
 <body>
+<div class="wallpaper" id="wallpaper" aria-hidden="true"><img id="customWallpaper" alt=""></div>
 <canvas id="stars"></canvas>
 <div class="aurora"><i></i><i></i><i></i></div>
 
@@ -175,7 +176,7 @@
       <button type="button" class="photo-link" id="clearAvatar" hidden>Eltávolítás</button>
       <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp" hidden></div></div>
     <label>Név<input id="characterName" maxlength="80" required placeholder="Például Mira"></label>
-    <label>Személyiség és válaszstílus<textarea id="characterPrompt" maxlength="8000" rows="3" required placeholder="Például türelmes tanár, aki rövid példákkal magyaráz."></textarea></label>
+    <label>Személyiség és válaszstílus (opcionális)<textarea id="characterPrompt" maxlength="8000" rows="3" placeholder="Például türelmes tanár, aki rövid példákkal magyaráz."></textarea></label>
     <div class="model-fields"><label>Szolgáltató vagy fiók<select id="characterProvider"></select></label>
       <div class="model-picker"><label for="characterModel">Modell</label>
         <div class="model-entry"><input id="characterModel" maxlength="256" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="characterModels" aria-expanded="false">

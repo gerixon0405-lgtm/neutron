@@ -26,12 +26,25 @@ const {isRateLimit,rateRetryDecision,RATE_RETRY_DELAY}=require("../retry-policy"
     fs.writeFileSync(input,"árvíztűrő");
     const [row]=await files.importFiles("chat-a",[input]);
     fs.writeFileSync(input,"Ez már az új tartalom");
-    assert.equal(fs.readFileSync(files.resolveFile("chat-a",row),"utf8"),"árvíztűrő");
+    assert.equal(files.resolveFile("chat-a",row),input);
+    assert.equal(fs.readFileSync(files.resolveFile("chat-a",row),"utf8"),"Ez már az új tartalom");
     assert.equal(row.name,"jegyzet ékezet.txt");
     assert.throws(()=>files.resolveFile("chat-b",row));
     assert.throws(()=>files.resolveFile("chat-a",{id:"../jegyzet.txt"}));
     await assert.rejects(files.importFiles("chat-a",[folder]));
+    const large=path.join(folder,"large.bin");fs.writeFileSync(large,"a");
+    fs.truncateSync(large,128*1024*1024);
+    const [largeFile]=await files.importFiles("chat-a",[large]);
+    assert.equal(largeFile.size,128*1024*1024);
+    await files.removeFile("chat-a",largeFile);
+    assert.ok(fs.existsSync(large));
+    const legacy={id:"c617572b-dfe7-4f93-8f38-77c3824bca9e.txt"};
+    const key=require("node:crypto").createHash("sha256").update("chat-a").digest("hex");
+    const saved=path.join(folder,".neutron-workspaces","uploads",key,legacy.id);
+    fs.writeFileSync(saved,"korábbi melléklet");
+    assert.equal(files.resolveFile("chat-a",legacy),saved);
     await files.removeChat("chat-a");
+    assert.ok(fs.existsSync(input));
     assert.throws(()=>files.resolveFile("chat-a",row));
   } finally { fs.rmSync(folder,{recursive:true,force:true}); }
 })().catch(error=>{console.error(error);process.exitCode=1;});
